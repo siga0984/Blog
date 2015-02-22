@@ -10,14 +10,14 @@ Post relacionado : https://siga0984.wordpress.com/2014/12/12/codeblocks-em-advpl
 ====================================================================== */
 
 User Function Ola01()
-Local bCB := {|| MsgInfo("Olá CodeBlock") }
+Local bCB := {|| MsgInfo("Ola CodeBlock") }
 Eval(bCB)
 Return
 
 
 User Function Ola02()
 Local bCB := {| cMsg | MsgInfo(cMsg) }
-Eval(bCB,"Olá CodeBlock")
+Eval(bCB,"Ola CodeBlock")
 Eval(bCB,"Adeus CodeBlock")
 Return
 
@@ -27,7 +27,7 @@ Local bCB := {| x1,x2 | IIF( X1 < x2 , x1 , x2 ) }
 Local nRet
 Local cRet
 nRet := Eval(bCB,10,5)
-MsgInfo( cValToChar(nRet),"Número")
+MsgInfo( cValToChar(nRet),"Numero")
 cRet := Eval(bCB,"ABC","ACD")
 MsgInfo( cRet,"String")
 Return
@@ -42,7 +42,7 @@ Local nY , nZ
 // e recebe em y e z a referência das variáveis 
 // nY e nZ respectivamente
 lPar := Eval( bCB , nTeste , @nY , @nZ )
-MsgInfo(lPar , "O numero é par ? ")
+MsgInfo(lPar , "O numero e par ? ")
 MsgInfo(nY , "Numero / 2 ")
 MsgInfo(nZ , "Numero * 2 ")
 Return

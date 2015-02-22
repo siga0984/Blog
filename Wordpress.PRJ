@@ -1,0 +1,58 @@
+Group Tudo em Advpl 
+   Version=7.0
+   VSSDB=
+   HasProperties=1
+   Properties
+      BeforeApply=
+      AfterApply=
+      Icon=
+      ID=
+      Version=
+      PalmName=
+      OutPut=
+   End
+   ProjectsCount=1
+   Project siga0984
+      FoldersCount=1
+      Folder Fontes
+         VSSPath=Fontes
+         FilesCount=12
+         File \GitHub\Blog\ApCodeBlock.prw
+             Type=T
+         End
+         File \GitHub\Blog\ApGlbQueue.prw
+             Type=T
+         End
+         File \GitHub\Blog\ApHello.prw
+             Type=T
+         End
+         File \GitHub\Blog\ApHello2.prw
+             Type=T
+         End
+         File \GitHub\Blog\ApHello3.prw
+             Type=T
+         End
+         File \GitHub\Blog\AppInt01.prw
+             Type=T
+         End
+         File \GitHub\Blog\AppInt02.prw
+             Type=T
+         End
+         File \GitHub\Blog\APRecursao.prw
+             Type=T
+         End
+         File \GitHub\Blog\RmtDet.prw
+             Type=T
+         End
+         File \GitHub\Blog\TSTDup.prw
+             Type=T
+         End
+         File \GitHub\Blog\TSTHash.prw
+             Type=T
+         End
+         File \GitHub\Blog\TSTQueue.prw
+             Type=T
+         End
+      End
+   End
+End

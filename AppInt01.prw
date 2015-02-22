@@ -19,9 +19,13 @@ DEFINE DIALOG oDlg TITLE "Exemplo" FROM 0,0 TO 150,300 COLOR CLR_BLACK,CLR_WHITE
 @ 50,05 BUTTON oBtn1 PROMPT 'Sair' ACTION ( oDlg:End() ) SIZE 40, 013 OF oDlg PIXEL
 ACTIVATE DIALOG oDlg CENTER
 Return
+  
+// Abaixo segue a mesma funcao, escrita usando diretamente as classes
+// de interface visual, ao inves de usar os comandos de interface
 
+/*
 
-User Function APPINT02() 
+User Function APPINT01() 
 Local oDlg
 Local oBtn1, oSay1
  
@@ -31,5 +35,5 @@ oBtn1 := TButton():New( 50, 05, "Sair", oDlg,{|| oDlg:End() }, 40, 013,,,,.T. )
 oDlg:Activate( , , , .T. )
 Return
 
-
+*/
 
