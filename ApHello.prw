@@ -1,17 +1,17 @@
 #include 'protheus.ch'
 
 /* ======================================================================
-Função      U_APTST
-Autor       Júlio Wittwer
+FunÃ§Ã£o      U_APTST
+Autor       JÃºlio Wittwer
 Data        01/12/2014
-Descrição   Fonte de teste e demonstração de aplicação Hello World
-            utilizando a orientação a objeto no AdvPL 
+DescriÃ§Ã£o   Fonte de teste e demonstraÃ§Ã£o de aplicaÃ§Ã£o Hello World
+            utilizando a orientaÃ§Ã£o a objeto no AdvPL 
 
 Post relacionado : https://siga0984.wordpress.com/2014/12/01/classes-em-advpl-parte-01/
 ====================================================================== */
 
 USER FUNCTION APTST()
-Local oObj := APHello():New('Olá mundo Advpl')
+Local oObj := APHello():New('OlÃ¡ mundo Advpl')
 oObj:SayHello()
 Return
 

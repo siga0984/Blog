@@ -1,16 +1,16 @@
 #INCLUDE "protheus.ch"
 
 /* ======================================================================
-Função      U_APTST2
-Autor       Júlio Wittwer
+FunÃ§Ã£o      U_APTST2
+Autor       JÃºlio Wittwer
 Data        02/12/2014
-Descrição   Fonte de teste e demonstração de herança
-            de classes na orientação a objeto do AdvPL 
+DescriÃ§Ã£o   Fonte de teste e demonstraÃ§Ã£o de heranÃ§a
+            de classes na orientaÃ§Ã£o a objeto do AdvPL 
 
 Post relacionado : https://siga0984.wordpress.com/2014/12/02/classes-em-advpl-parte-02/
 ====================================================================== */
 
-// Fonte de teste da classe com herança
+// Fonte de teste da classe com heranÃ§a
 User Function APTST2() 
 Local oObj
 oObj := APFILHA():New(123)
@@ -18,7 +18,7 @@ oObj:SayValue()
 Return
 
 // -----------------------------------------------------------
-// Classe superior para demonstração de herança
+// Classe superior para demonstraÃ§Ã£o de heranÃ§a
 CLASS APPAI
   DATA nValue as Integer
   METHOD New(nNum) CONSTRUCTOR
@@ -31,7 +31,7 @@ METHOD New(nNum) CLASS APPAI
 Return self
 
 // Mostra o valor guardado na tela, identificando na tela que 
-// o método da classe Pai foi utilizado 
+// o mÃ©todo da classe Pai foi utilizado 
 METHOD SayValue() CLASS APPAI
 MsgInfo(::nValue,"Classe Pai")
 Return
@@ -49,7 +49,7 @@ _Super:New(nNum)
 return self
 
 // Metodo para mostrar o valor, pergunta ao operador se 
-// deve ser chamado o metodo da classe pai ou não. 
+// deve ser chamado o metodo da classe pai ou nÃ£o. 
 METHOD SayValue() CLASS APFILHA
 If MsgYesNo("Chamar a classe pai ?")
   _Super:SayValue()

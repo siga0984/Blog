@@ -1,11 +1,11 @@
 #include "protheus.ch"
 
 /* ======================================================================
-Função      U_TSTHASH
-Autor       Júlio Wittwer
+FunÃ§Ã£o      U_TSTHASH
+Autor       JÃºlio Wittwer
 Data        16/12/2014
-Descrição   Fonte de teste e demonstração de desempenho de uso 
-            de hash em AdvPL em comparação com busca sequencial em array
+DescriÃ§Ã£o   Fonte de teste e demonstraÃ§Ã£o de desempenho de uso 
+            de hash em AdvPL em comparaÃ§Ã£o com busca sequencial em array
 
 Post relacionado : https://siga0984.wordpress.com/2014/12/16/performance-e-escalabilidade-hash-map-em-advpl/
 ====================================================================== */
@@ -27,10 +27,10 @@ aadd(aDados , { "RX","Roxo" } )
 aadd(aDados , { "AM","Amarelo" } )
 aadd(aDados , { "MA","Marrom" } )
 aadd(aDados , { "AM","Azul Marinho" } )
-aadd(aDados , { "AC","Azul Céu" } )
+aadd(aDados , { "AC","Azul CÃ©u" } )
 aadd(aDados , { "AQ","Amarelo Queimado" } )
 aadd(aDados , { "AT","Azul Turquesa" } )
-aadd(aDados , { "SA","Salmão" } )
+aadd(aDados , { "SA","SalmÃ£o" } )
 aadd(aDados , { "VO","Verde Oliva" } )
 aadd(aDados , { "VI","Violeta" } )
 aadd(aDados , { "GR","Cinza" } )

@@ -1,10 +1,10 @@
 #include 'protheus.ch'
 
 /* ======================================================================
-Função    U_RmtDet()
-Autor     Júlio Wittwer
+FunÃ§Ã£o    U_RmtDet()
+Autor     JÃºlio Wittwer
 Data      01/02/2015
-Descrição Monta uma caixa de diálogo com todas as informações possíveis
+DescriÃ§Ã£o Monta uma caixa de diÃ¡logo com todas as informaÃ§Ãµes possÃ­veis
           de se obter do SmartClient que iniciou este programa.
 
 Post relacionado: https://siga0984.wordpress.com/2015/02/02/interface-visual-do-advpl-smartclient/
@@ -19,7 +19,7 @@ Local oFont
 Local cInfo := ''
 
 // Habilita interface com data mostrada com 4 digitos no ano
-// e Habilita data em formato britânico ( Dia/Mes/Ano )
+// e Habilita data em formato britÃ¢nico ( Dia/Mes/Ano )
 SET CENTURY ON
 SET DATE BRITISH
 
@@ -43,12 +43,12 @@ If !empty(cRmtLib)
   cRmtType += ' ('+cRmtLib+')'
 Endif
 
-// Usa uma fonte mono-espaçada 
+// Usa uma fonte mono-espaÃ§ada 
 DEFINE FONT oFont NAME 'Courier New'
-// Cria uma caixa de diálogo com área util de 640x480 PIXELs
+// Cria uma caixa de diÃ¡logo com Ã¡rea util de 640x480 PIXELs
 DEFINE DIALOG oDlg TITLE (cRmtType) FROM 0,0 TO 480,640 PIXEL
 
-// Informações da Interface remota
+// InformaÃ§Ãµes da Interface remota
 cRmtBuild := GetBuild(.T.)
 cRmtIp := GetclientIP()
 cUsrName := LogUserName()
