@@ -1,11 +1,11 @@
 #include 'protheus.ch'
 
 /* ======================================================================
-FunÃ§Ã£o      U_TESTEFAT e U_TESTEDIR
-Autor       JÃºlio Wittwer
+Função      U_TESTEFAT e U_TESTEDIR
+Autor       Júlio Wittwer
 Data        14/01/2015
-DescriÃ§Ã£o   Fonte de teste e demonstraÃ§Ã£o de recursao e percorrer
-            uma estrutura de Ã¡rvore em AdvPL
+Descrição   Fonte de teste e demonstração de recursao e percorrer
+            uma estrutura de árvore em AdvPL
 
 Post relacionado : https://siga0984.wordpress.com/2015/01/14/funcoes-recursivas-em-advpl/
 ====================================================================== */

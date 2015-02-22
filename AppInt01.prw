@@ -1,10 +1,10 @@
 #include 'protheus.ch'
 
 /* ======================================================================
-FunÃ§Ã£o      U_APPINT01 e U_APPINT02
-Autor       JÃºlio Wittwer
+Função      U_APPINT01 e U_APPINT02
+Autor       Júlio Wittwer
 Data        21/01/2015
-DescriÃ§Ã£o   Fonte de demonstraÃ§Ã£o de uso de classes de Interface AdvPL
+Descrição   Fonte de demonstração de uso de classes de Interface AdvPL
 
 Post relacionado : https://siga0984.wordpress.com/2015/01/21/interface-visual-do-advpl-parte-01/
 ====================================================================== */

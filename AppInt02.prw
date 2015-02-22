@@ -2,10 +2,10 @@
 
 /* ======================================================================
 Fonte    APPINT02.PRW
-Autor    J√∫lio Wittwer
+Autor    J˙lio Wittwer
 Data    10/01/2015
-Descri√ß√£o  Fonte de exemplo de uso de multiplos componentes de interface
-      dentro de uma caixa de di√°logo.
+DescriÁ„o  Fonte de exemplo de uso de multiplos componentes de interface
+      dentro de uma caixa de di·logo.
 
 Post relacionado
 
@@ -45,7 +45,7 @@ Local oButton1
 Local oBmpBtn1
 
 // Habilita interface com data mostrada com 4 digitos no ano
-// e Habilita data em formato brit√¢nico ( Dia/Mes/Ano )
+// e Habilita data em formato brit‚nico ( Dia/Mes/Ano )
 SET CENTURY ON
 SET DATE BRITISH
 
@@ -54,21 +54,21 @@ aadd(aCores,"Azul")
 aadd(aCores,"Branco")
 aadd(aCores,"Vermelho")
 
-// Cria uma caixa de di√°logo com √°rea util de 800x600  PIXELs
+// Cria uma caixa de di·logo com ·rea util de 800x600  PIXELs
 DEFINE DIALOG oDlg TITLE "Exemplo de Interface" FROM 0,0 TO 600,800 PIXEL
 
 // Nao permite que a tecla ESC feche a caixa de dialogo
 oDlg:lEscClose := .F.
 
-// desenha uma borda com um t√≠tulo para demarcar os objetos 
-// usados para a √°rea de entrada de dados
+// desenha uma borda com um tÌtulo para demarcar os objetos 
+// usados para a ·rea de entrada de dados
 @ 05,05 GROUP oGroup1 TO 130,330 LABEL "Entrada de Dados" OF oDlg  PIXEL
 
-// Monta um GET para entrada de dados em vari√°vel string
+// Monta um GET para entrada de dados em vari·vel string
 @ 18,15 SAY oSay1 PROMPT "Get String" SIZE 30,12 OF oDlg  PIXEL
 @ 15,50 GET oGet1 VAR cVarStr PICTURE "@!" SIZE 80,12 OF oDlg  PIXEL
 
-// Monta um GET para entrada de dados num√©ricos
+// Monta um GET para entrada de dados numÈricos
 @ 33,15 SAY oSay2 PROMPT "Get Numeric" SIZE 30,12 OF oDlg  PIXEL
 @ 30,50 GET oGet2 VAR nVarNum PICTURE "999999999" SIZE 80, 12  OF oDlg  PIXEL
 
@@ -76,26 +76,26 @@ oDlg:lEscClose := .F.
 @ 48,15 SAY oSay3 PROMPT "Get Date" SIZE 30,12 OF oDlg  PIXEL
 @ 45,50 GET oGet3 VAR dVarDate SIZE 80,12 OF oDlg  PIXEL
 
-// Monta um CheckBox para entrada de um valor l√≥gico / booleano
+// Monta um CheckBox para entrada de um valor lÛgico / booleano
 @ 60,15 CHECKBOX oChkBox1 VAR lCheckBox PROMPT "CheckBox" SIZE 80,12 OF oDlg  PIXEL
 
 // Monta um objeto Combo, para escolha de string entre elementos de um array
 @ 75,15 COMBOBOX oComboBox1 VAR cVarCombo ITEMS aCores SIZE 80,12 OF oDlg  PIXEL
 
-// Monta um objeto Radio, para escolha num√©rica a partir de um array
-@ 90,15 RADIO oRadio1 VAR nVarRadio ITEMS "Um","Dois","Tr√™s" SIZE 40,36 OF oDlg  PIXEL
+// Monta um objeto Radio, para escolha numÈrica a partir de um array
+@ 90,15 RADIO oRadio1 VAR nVarRadio ITEMS "Um","Dois","TrÍs" SIZE 40,36 OF oDlg  PIXEL
 
 // Monta um listbox, para escolha de uma string entre elementos de um array
 @ 15,200 LISTBOX oLst VAR cVarList ITEMS aCores SIZE 80,36 OF oDlg  PIXEL
 
 // Monta um GET MULTILINE para a entrada livre de valores texto
-// Com suporte a quebra de linha e tabula√ß√£o
+// Com suporte a quebra de linha e tabulaÁ„o
 @ 60,200 SAY oSay4 PROMPT "Get Multiline" SIZE 30,12 OF oDlg  PIXEL
 @ 70,200 GET oGet4 VAR cVarMemo MULTILINE SIZE 120, 48 of oDlg  PIXEL
 
 // Exemplo de folders.
-// Um folder √© um container que pode receber outros componentes
-// Cada objeto de dentro de um folder √© da classe tFolderPage
+// Um folder È um container que pode receber outros componentes
+// Cada objeto de dentro de um folder È da classe tFolderPage
 
 @ 140,15 FOLDER oFolders PROMPTS "Folder1","Folder2" SIZE 130, 40 OF oDlg  PIXEL
 
@@ -103,16 +103,16 @@ oDlg:lEscClose := .F.
 @ 03,03 SAY oSayF1 PROMPT "Say Folder 1" SIZE 50,12 OF oFolders:aDialogs[1]  PIXEL
 @ 03,03 SAY oSayF2 PROMPT "Say Folder 2" SIZE 50,12 OF oFolders:aDialogs[2]  PIXEL
 
-// Um panel √© um container que pode receber outros componentes
+// Um panel È um container que pode receber outros componentes
 @ 190,15 MSPANEL oPanel1 PROMPT "Painel" RAISED SIZE 130, 36 OF oDlg
 
 // Objeto tSay() clocado dentro do painel
 @ 10,05 SAY oSayP PROMPT "Say Panel" SIZE 30,12 OF oPanel1  PIXEL
 
 // Scrollbox , ou caixa de rolagem, tambem serve de container para outros objetos
-// O tamanho √© especificado em altura,comprimento, ao contrario dos demais componentes, 
-// onde o tamanho √© especificado em comprimento,altura
-// O Scroll Box pode ser VERTICAL , HORIZONTAL ou ambos. A borda √© opcional, e pode ser omitida
+// O tamanho È especificado em altura,comprimento, ao contrario dos demais componentes, 
+// onde o tamanho È especificado em comprimento,altura
+// O Scroll Box pode ser VERTICAL , HORIZONTAL ou ambos. A borda È opcional, e pode ser omitida
 @ 140,200 SCROLLBOX oScroll VERTICAL SIZE 40, 130 OF oDlg BORDER
 
 // Objetos tSay() colocados dentro do scroll
@@ -124,19 +124,19 @@ oDlg:lEscClose := .F.
 @ 190,200 METER oMeter VAR nMeterPos TOTAL 1000 SIZE 130,8 OF oDlg PIXEL
 @ 200,200 SAY oSayM PROMPT "" SIZE 80,10 OF oDlg PIXEL
 
-// Um objeto BUTTONBAR server de container para bot√µes com imagens
-// e √© alinhado automaticamente dentro da dialog
+// Um objeto BUTTONBAR server de container para botıes com imagens
+// e È alinhado automaticamente dentro da dialog
 // pode ser alinhado BOTTOM, TOP , LEFT ou RIGHT
 DEFINE BUTTONBAR oBtnBar BOTTOM of oDlg
                    
 DEFINE BUTTON oBtnBar1 BUTTONBAR oBtnBar RESOURCE "ATALHO" ;
    ACTION (MsgInfo(GetClassName(oBtnBar1)))
 
-// Bot√£o com atalho de teclado
+// Bot„o com atalho de teclado
 // Basta prefixar a letra a ser usada como atalho com o caractere "&"
-// Para acessar o bot√£o pelo teclado, em qualquer ponto da interface,
-// basta usar <ALT>+<B>. Caso o foco esteja em um componente que n√£o seja
-// de edi√ß√£o de dados, basta pressionar apenas a letra "B".
+// Para acessar o bot„o pelo teclado, em qualquer ponto da interface,
+// basta usar <ALT>+<B>. Caso o foco esteja em um componente que n„o seja
+// de ediÁ„o de dados, basta pressionar apenas a letra "B".
 
 @ 230,05 BUTTON oButton1 PROMPT "o&Btn1" ;
   ACTION (MsgInfo(GetClassName(oButton1))) ;
@@ -151,8 +151,8 @@ DEFINE BUTTON oBtnBar1 BUTTONBAR oBtnBar RESOURCE "ATALHO" ;
 @ 460,240 BTNBMP oBmpBtn1 RESOURCE "ATALHO" SIZE 30,30 OF oDlg  ACTION (MsgInfo(GetClassName(oBmpBtn1)))
 
 // Botores antigos usados em RDmakes, mantidos por compatibilidade
-// Cada bot√£o √© uma inst√¢ncia da classe SBUTTON(). 
-// Sao 23 tipos de botoes, com imagens pr√©-definidas
+// Cada bot„o È uma inst‚ncia da classe SBUTTON(). 
+// Sao 23 tipos de botoes, com imagens prÈ-definidas
 
 DEFINE SBUTTON osBtn01  FROM 250 , 05  TYPE 01 ACTION (MsgInfo("SButton 01")) OF oDlg  ENABLE
 DEFINE SBUTTON osBtn02  FROM 250 , 45  TYPE 02 ACTION (MsgInfo("SButton 02")) OF oDlg  ENABLE
@@ -182,7 +182,7 @@ DEFINE SBUTTON osBtn23  FROM 270 , 85  TYPE 23 ACTION (MsgInfo("SButton 23")) OF
 // a cada 1 segundo ( 1000 milissegundos, tempo minimo )
 DEFINE TIMER oTimer INTERVAL 1000 ACTION ( UpdMeter(@nMeterPos,oMeter,oTimer,oSayM) ) OF oDlg
 
-// Na ativa√ß√£o do dialogo, iniciamos o timer
+// Na ativaÁ„o do dialogo, iniciamos o timer
 // e colocamos uma funcao para permitir ou nao o fechamento/saida do dialogo
 ACTIVATE DIALOG oDlg CENTER ;
   ON INIT (oTimer:Activate()) ;
@@ -191,11 +191,11 @@ ACTIVATE DIALOG oDlg CENTER ;
 Return
 
 /*-------------------------------------------------------------------
-Fun√ß√£o UpdMeter()
-Fun√ß√£o chamada a cada 1 segundo pelo timer. Ela incrementa o contador do meter,
-seta a nova posi√ß√£o do contador e atualiza o texto de um label logo abaixo
+FunÁ„o UpdMeter()
+FunÁ„o chamada a cada 1 segundo pelo timer. Ela incrementa o contador do meter,
+seta a nova posiÁ„o do contador e atualiza o texto de um label logo abaixo
 do meter com o valor atual do contador. Quando o contador passar de 1000,
-o timer √© desligado pela fun√ß√£o
+o timer È desligado pela funÁ„o
 ------------------------------------------------------------------- */
 
 STATIC Function UpdMeter( nMeterPos , oMeter , oTimer , oSayM )
@@ -212,16 +212,16 @@ Return
 
 
 /* -------------------------------------------------------------------
-Fun√ß√£o AllowClose()
+FunÁ„o AllowClose()
 Verifica se alguem esta tentando fechar o dialogo.
-Caso ela retorne .T., o di√°logo √© fechado, caso contr√°rio
-o di√°logo permanece aberto. Caso o fechamento seja autorizado,
-a fun√ß√£o desliga o timer, para evitar de khaver um disparo de timer
-enquanto o di√°logo est√° sendo destru√≠do.
+Caso ela retorne .T., o di·logo È fechado, caso contr·rio
+o di·logo permanece aberto. Caso o fechamento seja autorizado,
+a funÁ„o desliga o timer, para evitar de khaver um disparo de timer
+enquanto o di·logo est· sendo destruÌdo.
 ------------------------------------------------------------------- */
 
 STATIC Function AllowClose(oDlg,oTimer)
-If MsgYesNo("Deseja encerrar a aplica√ß√£o ?")
+If MsgYesNo("Deseja encerrar a aplicaÁ„o ?")
   oTimer:deactivate()
   Return .T.
 Endif

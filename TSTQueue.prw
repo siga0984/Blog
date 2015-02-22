@@ -1,17 +1,17 @@
 #include 'protheus.ch'
 
 /* ===================================================================
-FunÃ§Ã£o     U_TSTQueue
-Autor      JÃºlio Wittwer
+Função     U_TSTQueue
+Autor      Júlio Wittwer
 Data       08/02/2015
-DesriÃ§Ã£o   Teste de fila global com processamento 
-           das requisiÃ§Ãµes em JOB
+Desrição   Teste de fila global com processamento 
+           das requisições em JOB
 
 Post relacionado
 
 https://siga0984.wordpress.com/2015/02/17/escalabilidade-e-performance-fila-com-job/
 
-ConfiguraÃ§Ã£o de onstart para o Job de processamento
+Configuração de onstart para o Job de processamento
 
 [ONSTART]
 Jobs=JOBFILA01
@@ -36,21 +36,21 @@ Local cMsg3 := space(40)
  
 // Cria o objeto da fila global 
 // Informa o nome da fila global e 
-// a quantidade mÃ¡xima de elementos
+// a quantidade máxima de elementos
 oQueue := APGlbQueue():New( "FILA01", 10 )
 DEFINE DIALOG oDlg TITLE "Cliente da Fila" FROM 0,0 TO 160,300 PIXEL
 // Botao para acrescentar na fila uma requisicao de processamento
-@ 10,10 BUTTON oButton1 PROMPT "&Inserir requisiÃ§Ã£o" ;
+@ 10,10 BUTTON oButton1 PROMPT "&Inserir requisição" ;
   ACTION ( InsertReq(oQueue,oSay1,oSay2) ) ;
   SIZE 080, 013 of oDlg PIXEL
 @ 30,10 SAY oSay1 VAR cMsg1 SIZE 080, 013 of oDlg PIXEL
 @ 40,10 SAY oSay2 VAR cMsg2 SIZE 080, 013 of oDlg PIXEL
 ACTIVATE DIALOG oDlg CENTER ;
-  VALID ( MsgYesNo("Deseja encerrar a aplicaÃ§Ã£o ?") )
+  VALID ( MsgYesNo("Deseja encerrar a aplicação ?") )
 Return
 
 /* ----------------------------------------------------------------
-InserÃ§Ã£o de requisiÃ§Ã£o na fila, disparada pelo botÃ£o de interface
+Inserção de requisição na fila, disparada pelo botão de interface
 Atualiza valor na tela com o total de requisicoes enviadas 
 ---------------------------------------------------------------- */
 STATIC Function InsertReq(oQueue,oSay1,oSay2)
@@ -63,8 +63,8 @@ If nStatus < 0
   // Falha ao inserir na fila
   MsgStop(oQueue:GetErrorStr(),"Falha ao acrescentar elemento na fila")
 Else
-  // Inseriu com sucesso, atualiza informaÃ§oes na tela
-  oSay1:SetText("RequisiÃ§Ãµes inseridas ... "+cValToChar(oQueue:nEnqCnt))
+  // Inseriu com sucesso, atualiza informaçoes na tela
+  oSay1:SetText("Requisições inseridas ... "+cValToChar(oQueue:nEnqCnt))
   oSay2:SetText("Itens na fila ........... "+cValToChar(nStatus))
 endif
 Return
@@ -79,7 +79,7 @@ Local nStatus
 Local oQueue
 Local xRequest := NIL
 
-// Coloca observaÃ§Ã£o do processo para Protheus Monitor
+// Coloca observação do processo para Protheus Monitor
 PtInternal(1,"Job de Processamento - Fila "+cQueueId)
 
 If empty(cQueueId)
@@ -88,13 +88,13 @@ If empty(cQueueId)
 Endif
 conout("["+dtos(date())+" "+time()+"][JOB] Thread ["+cValToChar(ThreadId())+"] Iniciado.")
 
-// Cria a instÃ¢ncia para manutenÃ§Ã£o da fila
+// Cria a instância para manutenção da fila
 oQueue := APGlbQueue():New( cQueueId )
 While !KillApp() 
  
-  // Loop de processamento permanece em execuÃ§Ã£o
+  // Loop de processamento permanece em execução
   // desde que esta thread nao tenha recebido
-  // uma notificaÃ§Ã£o de finalizaÃ§Ã£o 
+  // uma notificação de finalização 
  
   // Tenta remover o primeiro item da fila
   nStatus := oQueue:Dequeue( @xRequest )
@@ -111,7 +111,7 @@ While !KillApp()
     conout( "["+dtos(date())+" "+time()+"][JOB] Thread ["+cValToChar(ThreadId())+"] Processando ... " )
  
     // Aqui eu poderia chamar qqer coisa
-    // neste exemplo serÃ¡ feito um sleep mesmo 
+    // neste exemplo será feito um sleep mesmo 
     Sleep(xRequest)
  
     conout( "["+dtos(date())+" "+time()+"][JOB] Thread ["+cValToChar(ThreadId())+"] Fim de processamento " )
