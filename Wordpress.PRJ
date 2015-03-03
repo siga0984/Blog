@@ -1,4 +1,4 @@
-Group Tudo em Advpl 
+Group Tudo em Advpl
    Version=7.0
    VSSDB=
    HasProperties=1
@@ -16,7 +16,7 @@ Group Tudo em Advpl
       FoldersCount=1
       Folder Fontes
          VSSPath=Fontes
-         FilesCount=12
+         FilesCount=14
          File \GitHub\Blog\ApCodeBlock.prw
              Type=T
          End
@@ -51,6 +51,12 @@ Group Tudo em Advpl
              Type=T
          End
          File \GitHub\Blog\TSTQueue.prw
+             Type=T
+         End
+         File \GitHub\Blog\ApDBImage.prw
+             Type=T
+         End
+         File \GitHub\Blog\TSTDBIMG.prw
              Type=T
          End
       End
