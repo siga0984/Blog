@@ -1,30 +1,31 @@
 #include "protheus.ch"
 
-#DEFINE TEMP_PATH   '\temp\'
-
 /* ---------------------------------------------------
 Classe    ApDBImage
 Autor     Júlio Wittwer
-Data      27/02/2015
+Data      27/02/2015         
+Versão    1.150308
 Descrição Classe para encapsular leitura e gravação de 
           imagens em tabela do SGDB através do DBACCESS
+
+Observação	Trabalha com ImahgeID e ImageType em caixa baixa
 --------------------------------------------------- */
 
 CLASS APDBIMAGE
 
+	// Propriedades
   DATA bOpened 
-  DATA bExclusive
   DATA cError
 
+	// Métodos 
   METHOD New()    
-  METHOD Open( lExclusive )
+  METHOD Open()
   METHOD Close() 
   METHOD ReadStr( cImgId , /* @ */ cImgType , /* @ */ cImgBuffer )   
   METHOD Insert( cImgId , cImgType , /* @ */ cImgBuffer )   
   METHOD Update( cImgId , cImgType , /* @ */ cImgBuffer )   
   METHOD Delete( cImgId )   
   METHOD Status()   
-  METHOD Shrink()
 
 	// Metodos de acesso de imagens no disco
   METHOD LoadFrom( cFile, cImgBuffer )
@@ -38,7 +39,6 @@ Apenas inicializa propriedades
 -------------------------------------------------------- */
 METHOD New() CLASS APDBIMAGE
 ::bOpened := .F.
-::bExclusive := .F. 
 ::cError := ''
 Return self
 
@@ -46,18 +46,19 @@ Return self
 /* ---------------------------------------------------------
 Abre a tabela de imagens no SGDB
 Conecta no DBAccess caso nao haja conexão
-Pode ser especificado abertura em exclusivo 
-para fazer SHRINK das imagens deletadas, por exemplo  
 --------------------------------------------------------- */
 
-METHOD Open( lExclusive ) CLASS APDBIMAGE
+METHOD Open( ) CLASS APDBIMAGE
 Local nDBHnd := -1
 Local aStru := {}
 Local cOldAlias := Alias()
 
-DEFAULT lExclusive := .F. 
-
 ::cError := ''  
+
+IF ::bOpened 
+	// Ja estava aberto, retorna direto
+	Return .T.
+Endif
 
 If !TcIsConnected()
 	nDBHnd := tcLink("MSSQL/STRESS","localhost",7890)
@@ -87,34 +88,19 @@ If !TCCanOpen("ZDBIMAGE")
 		Return
 	Endif
 	
-	// Cria o índice
+	// Cria o índice por ID da imagem 
 	INDEX ON ZDB_IMGID TO ("ZDBIMAGE1")
 	
 	// Fecha a tabela
 	USE
 	
 Endif
-
-// Se já estava aberto, fecha... 
-If Select("ZDBIMAGE") > 0 
-	ZDBIMAGE->(DbCloseArea())
-Endif
          
-If lExclusive 
-	// Abre em modo exclusivo -- para manutenção por exemplo
-	USE  ("ZDBIMAGE") ALIAS ZDBIMAGE EXCLUSIVE NEW VIA "TOPCONN"
-	If NetErr()
-		::cError := "Failed to open [ZDBIMAGE] on EXCLUSIVE Mode"
-		Return .F.
-	Endif
-	::bExclusive := .T. 
-Else
-	// Abre em modo compartilhado
-	USE  ("ZDBIMAGE") ALIAS ZDBIMAGE SHARED NEW VIA "TOPCONN"
-	If NetErr()
-		::cError := "Failed to open [ZDBIMAGE] on SHARED Mode"
-		Return .F.
-	Endif
+// Abre em modo compartilhado
+USE  ("ZDBIMAGE") ALIAS ZDBIMAGE SHARED NEW VIA "TOPCONN"
+If NetErr()
+	::cError := "Failed to open [ZDBIMAGE] on SHARED Mode"
+	Return .F.
 Endif
 
 DbSetIndex("ZDBIMAGE1")
@@ -122,12 +108,11 @@ DbSetOrder(1)
 
 ::bOpened := .T.
 
-If !Empty(cOldAlias) .and. Select(cOldAlias)>0
+If !Empty(cOldAlias) .and. Select(cOldAlias) > 0
 	DbSelectArea(cOldAlias)
 Endif
 
 Return ::bOpened
-
 
 /* ---------------------------------------------------------
 Le uma imagem do banco para a memoria
@@ -135,7 +120,6 @@ recebe o nome da imgem, retorna por referencia o tipo
 da imagem e seu conteudo 
 -------------------------------------------------------- */
 METHOD ReadStr( cImgId , /* @ */cImgType, /* @ */ cImgBuffer ) CLASS APDBIMAGE
-Local bOk  := .F.
 
 ::cError := ''  
 
@@ -149,17 +133,18 @@ If empty(cImgId)
 	Return .F. 
 Endif
 
-If ZDBIMAGE->(DbSeek(cImgId))
-	// Caso a imagem com o ID informado seja encontrada
-	// Carrega o buffer da imagem para a variável de memória
-	cImgBuffer := ZDBIMAGE->ZDB_MEMO
-	cImgType   := ZDBIMAGE->ZDB_TYPE
-	bOk := .T.
-Else
+If !ZDBIMAGE->(DbSeek(cImgId))
 	::cError := "APDBIMAGE:ReadStr() ImageId ["+cImgId+"] not found."
+	Return .F.
 Endif
 
-Return bOk
+// Caso a imagem com o ID informado seja encontrada
+// Carrega o buffer da imagem para a variável de memória
+cImgBuffer := ZDBIMAGE->ZDB_MEMO
+cImgType   := ZDBIMAGE->ZDB_TYPE
+
+Return .T.
+
 
 /* ---------------------------------------------------------
 Insere uma imagem na tabela de imagens do SGDB
@@ -184,6 +169,9 @@ If empty(cImgType)
 	::cError := "APDBIMAGE:Insert() Error: ImageType not specified."
 	Return .F. 
 Endif
+
+cImgId := Lower(cImgId)
+cImgType := Lower(cImgType)
 
 If !ZDBIMAGE->(DbSeek(cImgId))
 	// Se a imagem não existe, insere
@@ -224,29 +212,35 @@ If empty(cImgType)
 	Return .F. 
 Endif
 
-If ZDBIMAGE->(DbSeek(cImgId))
-	// Se a imagem  existe, atualiza
-	IF ZDBIMAGE->(DbrLock(recno()))
-		ZDBIMAGE->ZDB_TYPE  := cImgType
-		ZDBIMAGE->ZDB_SIZE  := len(cImgBuffer)
-		ZDBIMAGE->ZDB_HASH  := Md5(cImgBuffer,2) // Hash String Hexadecimal
-		ZDBIMAGE->ZDB_MEMO  := cImgBuffer
-		ZDBIMAGE->(DBRUnlock())
-		Return .T.
-	Endif
-	::cError := 'Image Id ['+cImgId+'] update lock failed.'
-Else
+cImgId := Lower(cImgId)
+cImgType := Lower(cImgType)
+   
+If !ZDBIMAGE->(DbSeek(cImgId))
 	::cError := 'Image Id ['+cImgId+'] not found.'
+	Return .F.
 Endif
 
-Return .F. 
+// Se a imagem  existe, atualiza
+IF !ZDBIMAGE->(DbrLock(recno()))
+	::cError := 'Image Id ['+cImgId+'] update lock failed.'
+	Return .F.
+Endif
+
+ZDBIMAGE->ZDB_TYPE  := cImgType
+ZDBIMAGE->ZDB_SIZE  := len(cImgBuffer)
+ZDBIMAGE->ZDB_HASH  := MD5(cImgBuffer,2) // Hash String Hexadecimal
+ZDBIMAGE->ZDB_MEMO  := cImgBuffer
+
+ZDBIMAGE->(DBRUnlock())
+
+Return .T.
+
 
 /* ---------------------------------------------------------
-Deleta ( marca para deleção ) uma imagem do Banco de Imagens
-Recebe apenas o ID da imagem
+Deleta fisicamente uma imagem da Tabela de Imagens
 -------------------------------------------------------- */
 
-METHOD Delete( cImgId ) CLASS APDBIMAGE
+METHOD Delete( cImgId , lHard ) CLASS APDBIMAGE
 Local nRecNo
 
 ::cError := ''  
@@ -261,27 +255,31 @@ If empty(cImgId)
 	Return .F. 
 Endif
 
-If ZDBIMAGE->(DbSeek(cImgId))
-
-	// Se a imagem  existe, marca o registro para deleção
-	nRecNo := ZDBIMAGE->(recno())
-	
-	If ZDBIMAGE->(DbrLock(nRecNo))
-		nErr := TcSqlExec("DELETE FROM ZDBIMAGE WHERE R_E_C_N_O_ = " + cValToChar(nRecNo) )
-		If nErr < 0 
-			::cError := 'Image Id ['+cImgId+'] delete error: '+TcSqlError()
-		Endif
-		ZDBIMAGE->(DBRUnlock())
-		Return .T.
-	Endif
-
-	::cError := 'Image Id ['+cImgId+'] delete lock failed.'
-
-Else
+If !ZDBIMAGE->(DbSeek(cImgId))
 	::cError := 'Image Id ['+cImgId+'] not found.'
+	Return .F.
 Endif
 
-Return .F. 
+// Se a imagem  existe, marca o registro para deleção
+nRecNo := ZDBIMAGE->(recno())
+
+// Mesmo que a deleção seja fisica, eu garanto 
+// o lock do registro na camada do dbaccess
+If !ZDBIMAGE->(DbrLock(nRecNo))
+	::cError := 'Image Id ['+cImgId+'] delete lock failed.'
+	Return .F.
+Endif
+
+// Deleta fisicamente no SGBD
+nErr := TcSqlExec("DELETE FROM ZDBIMAGE WHERE R_E_C_N_O_ = " + cValToChar(nRecNo) )
+If nErr < 0
+	::cError := 'Image Id ['+cImgId+'] delete error: '+TcSqlError()
+Endif
+
+// Solto o lock do registro no DBAccess
+ZDBIMAGE->(DBRUnlock())
+
+Return .T.
 
 /* ---------------------------------------------------------
 Fecha a tabela de imagens
@@ -295,41 +293,8 @@ Endif
 
 ::cError := ''  
 ::bOpened := .F.
-::bExclusive := .F.
 
 Return .T. 
-
-
-/* ---------------------------------------------------------
-Faz a deleção fisica dos registros marcados para deleção
-Requer a tabela de imagens aberta em modo exclusivo 
-Esla operação pode demorar, dependendo da quantidade de imagens
-marcadas para deleção. 
--------------------------------------------------------- */
-
-METHOD Shrink() CLASS APDBIMAGE
-
-::cError := ''  
-
-If !::bOpened
-	::cError := "APDBIMAGE:Shrink() Error: Instance not opened."
-	Return .F. 
-Endif
-
-If Select('ZDBIMAGE') == 0
-	::cError := "ZDBIMAGE alias not opened."
-	Return .F. 
-Endif
-
-If !::bExclusive
-	::cError := "APDBIMAGE:Shrink() Error: Exclusive open required."
-	Return .F. 
-Endif
-
-// Elimina fisicamente registros marcados para deleção 
-ZDBIMAGE->(Pack())
-
-Return .T.
 
 /* ---------------------------------------------------------
 Metodo      Status()
@@ -457,7 +422,7 @@ Local nH, nSize , nSaved
 ::cError := ''  
 
 If file(cFile)
-	::cError := "APDBIMAGE:SaveTo() Error: File ["+cFile+"] alreay exisis."
+	::cError := "APDBIMAGE:SaveTo() Error: File ["+cFile+"] alreay exists."
 	Return .F. 
 Endif
 
@@ -483,4 +448,3 @@ If nSaved < nSize
 Endif
 
 Return .T. 
-

@@ -3,7 +3,7 @@
 /* ====================================================================
 Função     U_TSTDBIMG
 Autor      Júlio Wittwer
-Versão     1.150303
+Versão     1.150308
 Data       27/02/2015
 Descrição  Função de teste da classe ApDBImage, para lidar com imagens
 armazenadas no Banco de Dados
@@ -27,7 +27,6 @@ CONTROL_ALIGN_NONE       // Não utiliza alinhamento
 // Imagem atual mostrada na interface
 STATIC _cImageName := ""
 STATIC _nImageFrom := 0
-STATIC _cImageType := ""
 STATIC _oBmp
 STATIC _oScroll
 
@@ -62,42 +61,35 @@ DEFINE DIALOG oDlg TITLE "Exemplo de Imagem no SGDB" FROM 0,0 TO 600,800 PIXEL
 @ 0,0 MSPANEL oPanelMenu RAISED SIZE 90,1 OF oDlg
 oPanelMenu:align := CONTROL_ALIGN_LEFT
 
+// Cria um scroll para conter a imagem 
 @ 0,0 SCROLLBOX _oScroll HORIZONTAL VERTICAL SIZE 10, 10 OF oDlg
 _oScroll:align := CONTROL_ALIGN_ALLCLIENT
 
 // Cria o botão para carregar imagem do disco
 
 @ 10,05 BUTTON oButton1 PROMPT "Ler do &Disco" ;
-	ACTION (LoadFromDSK()) ;
-	SIZE 080, 15 of oPanelMenu  PIXEL
+	ACTION (LoadFromDSK()) SIZE 080, 15 of oPanelMenu  PIXEL
 
 @ 30,05 BUTTON oButton1 PROMPT "Ler do &RPO" ;
-	ACTION (LoadFromRPO()) ;
-	SIZE 080, 15 of oPanelMenu  PIXEL
+	ACTION (LoadFromRPO()) SIZE 080, 15 of oPanelMenu  PIXEL
 
 @ 50,05 BUTTON oButton1 PROMPT "Ler do DB&IMAGE" ;
-	ACTION (LoadFromDBI(oDBImg)) ;
-	SIZE 080, 15 of oPanelMenu  PIXEL
+	ACTION (LoadFromDBI(oDBImg)) SIZE 080, 15 of oPanelMenu  PIXEL
 
 @ 70,05 BUTTON oButton2 PROMPT "&Salvar em Disco" ;
-	ACTION (SaveToDisk(oDBImg)) ;
-	SIZE 080, 15 of oPanelMenu  PIXEL
+	ACTION (SaveToDisk(oDBImg)) SIZE 080, 15 of oPanelMenu  PIXEL
 
 @ 90,05 BUTTON oButton1 PROMPT "I&nserir no DBIMAGE" ;
-	ACTION (InsertDBImg(oDBImg)) ;
-	SIZE 080, 15 of oPanelMenu  PIXEL
+	ACTION (InsertDBImg(oDBImg)) SIZE 080, 15 of oPanelMenu  PIXEL
 
 @ 110,05 BUTTON oButton1 PROMPT "&Alterar o DBIMAGE" ;
-	ACTION (UpdDBImg(oDBImg)) ;
-	SIZE 080, 15 of oPanelMenu  PIXEL
+	ACTION (UpdDBImg(oDBImg)) SIZE 080, 15 of oPanelMenu  PIXEL
 
 @ 130,05 BUTTON oButton1 PROMPT "Apaga&r do DBIMAGE" ;
-	ACTION (DelDBImg(oDBImg)) ;
-	SIZE 080, 15 of oPanelMenu  PIXEL
+	ACTION (DelDBImg(oDBImg)) SIZE 080, 15 of oPanelMenu  PIXEL
 
 @ 150,05 BUTTON oButton1 PROMPT "Es&tatísticas DBIMAGE" ;
-	ACTION (DBImgStat(oDBImg)) ;
-	SIZE 080, 15 of oPanelMenu  PIXEL
+	ACTION (DBImgStat(oDBImg)) SIZE 080, 15 of oPanelMenu  PIXEL
 
 ACTIVATE DIALOG oDlg CENTER
 
@@ -115,24 +107,23 @@ STATIC Function LoadFromDSK()
 Local cImgFile := ''
 Local cImgType := ''
 
-cImgFile := cGetFile(NIL,NIL,0,"\",.F., NIL ,.T.)
+cImgFile := cGetFile("ahbahba","*.bmp;*.png",0,"\",.F., NIL ,.T.)
 
 If !empty(cImgFile)
 	
+	// Verifica se o tipo do arquivo é suportado 
+	// -- avalia pela extensão 
 	If !ImgFileType( cImgFile , @cImgType )
 		msgStop("Arquivo ["+cImgFile+"] não suportado.")
 		Return
 	Endif
 	
-	// Cria um objeto bitmap dentro do scroll
-	// Já pré-aloca uma área grande para caber qqer imagem
-
-	ReNewBmp(cImgFile,.T.)
+	// Mostra a imagem (aqruivo) na interface	
+	DisplayBmp(cImgFile,.T.)
 	
 	// Imagem carregada do disco
 	_cImageName := cImgFile
 	_nImageFrom := 1
-	_cImageType := cImgType
 
 Endif
 
@@ -157,15 +148,12 @@ If !empty( cImgRes )
 		Return .F.
 	Endif
 
-	// Carrega a imagem como resource
-	// direto pelo componente tBitMap
-	
-	ReNewBmp(cImgRes+'.'+cImgType , .F. )
+	// Mostra a imagem (resource) na interface	
+	DisplayBmp(cImgRes+'.'+cImgType , .F. )
 
 	// Imagem carregada direto do RPO
 	_cImageName := cImgRes
 	_nImageFrom := 2
-	_cImageType := cImgType
 		
 Endif
 
@@ -181,7 +169,7 @@ Local cImgBuffer := ''
 Local cImgType := ''
 Local cTmpFile := '\tmpimage.'
 
-cImgId := AskUser("Abrir imagem do DBIMAGE","Id")
+cImgId := AskUser("Abrir imagem do DBIMAGE","ImageId")
 
 If !empty(cImgId)
 	
@@ -206,44 +194,18 @@ If !empty(cImgId)
 		MsgStop(oDBImg:cError,"LoadFromDBI")
 		Return
 	Endif
-	
-	ReNewBmp( cTmpFile , .T. )
 
+	// Mostra a imagem (arquivo) na interface	
+	DisplayBmp( cTmpFile , .T. )
+
+	// Imagem carregada da Tabela de Imagens 
 	_cImageName := cImgId
 	_nImageFrom := 3
-	_cImageType := cImgType
 	
 Endif
 
 Return
 
-
-/* --------------------------------------------------------
-Tela de interface para perguntar uma string ao usuario
-Usada para pedir ID de imagem ou nome de resource
--------------------------------------------------------- */
-STATIC Function AskUser(cTitle, cMessage , cRet )
-Local oDlg
-Local lOk  := .F.
-
-If cRet == NIL
-	cRet := space(30)
-else
-	cRet := padr( Upper(alltrim(cRet)) , 30 )
-Endif
-
-DEFINE DIALOG oDlg TITLE (cTitle) FROM 0,0 TO 60,340 PIXEL
-
-@ 08,05 SAY oSay Prompt (cMessage) SIZE 40,13 OF oDlg PIXEL
-
-@ 05,50 GET oGet VAR cRet PICTURE "@!" SIZE 80,13  OF oDlg PIXEL
-
-DEFINE SBUTTON osBtn01  FROM 05 , 140  TYPE 01 ACTION ( lOk := .T. , oDlg:End() ) OF oDlg  ENABLE
-DEFINE SBUTTON osBtn02  FROM 15 , 140  TYPE 02 ACTION ( lOk := .F. , oDlg:End() ) OF oDlg  ENABLE
-
-ACTIVATE DIALOG oDlg CENTER
-
-Return IIF( lOk , Alltrim(cRet) , '' )
 
 /* --------------------------------------------------------
 Grava a imagem atualmente em foco no disco
@@ -254,7 +216,7 @@ Local cImgType := ''
 Local cImgBuffer := ''
 
 If empty( _cImageName )
-	MsgInfo("Nao há imagem carregada para salvar em disco.")
+	MsgInfo("Nao há imagem na interface para salvar em disco.")
 	Return
 Endif
 
@@ -300,11 +262,11 @@ Local cImgBuffer := ''
 Local cImgType
 
 If empty( _cImageName )
-	MsgInfo("Nao há imagem carregada para inserir.")
+	MsgInfo("Nao há imagem na interface para inserir.")
 	Return
 Endif
 
-cImgId := AskUser("Inserir no ImageID","ID da Imagem")
+cImgId := AskUser("Inserir no ImageID","ID da Imagem",_cImageName)
 
 If empty(cImgId)
 	Return 
@@ -335,11 +297,11 @@ Local cImgBuffer := ''
 Local cImgType := ''
 
 If empty( _cImageName )
-	MsgInfo("Nao há imagem carregada para atualizar.")
+	MsgInfo("Nao há imagem na interface para atualizar.")
 	Return
 Endif
 
-cImgId := AskUser("Atualizar o ImageID","ID da Imagem")
+cImgId := AskUser("Atualizar o ImageID","ID da Imagem",_cImageName)
 
 If empty(cImgId)
 	Return
@@ -368,14 +330,14 @@ STATIC Function DelDBImg(oDBImg)
 Local cImgId
 Local cImgBuffer := ''
 
-cImgId := AskUser("Apagar do ImageID","ID da Imagem")
+cImgId := AskUser("Apagar do ImageID","ID da Imagem",_cImageName)
 
 If empty(cImgId)
 	Return
 Endif
 
-// Apaga a imagem do DBimage	
-If !oDBImg:Delete( cImgId , cImgBuffer )
+// Apaga fisicamente imagem do DBimage	
+If !oDBImg:Delete( cImgId )
 	MsgStop(oDBImg:cError,"DelDBImg")
 	Return
 Endif
@@ -386,6 +348,7 @@ Return
 
 /* --------------------------------------------------------
 Mostra mensagem de estatisticas do banco de imagens
+Monta im HTML monoespaçado para ser mostrado pela função MsgInfo()
 -------------------------------------------------------- */
 STATIC Function DBImgStat(oDBImg)
 Local aStatus := {}
@@ -410,7 +373,6 @@ Recebe cImgType por referencia (@)
 Retorna .T. e preenche o cImgType caso o arquivo
 tenha uma extensao suportada
 -------------------------------------------------------- */
-
 STATIC Function ImgFileType( cImgFile , /* @ */ cImgType )
 Local cExt := ''
 cImgType := ''
@@ -420,8 +382,9 @@ If Upper('/'+cExt+'/')$'/.BMP/.PNG/.JPG/'
 Endif
 Return !Empty(cImgType)
 
-
 /* --------------------------------------------------------
+Recarrega a imagem atual na memoria para operações
+como salvar em disco ou inserir / alterar na tabela de Imagens
 -------------------------------------------------------- */
 STATIC Function LoadCurrentImage(oDBImg,  /* @ */ cImgBuffer , /* @ */ cImgType )
 Local nPos
@@ -496,7 +459,7 @@ Refefine o objeto de interface para mostrar
 a imagem na tela ( Resource ou Arquivo ) 
 -------------------------------------------------------- */
 
-STATIC Function ReNewBMP( cName , lFile )
+STATIC Function DisplayBmp( cName , lFile )
 
 If _oBmp != NIL
 	// Se já tinha uma imagem na interface, "fecha"
@@ -516,6 +479,30 @@ _oBmp:lAutoSize := .T.
 
 Return
 
+/* --------------------------------------------------------
+Tela de interface para perguntar uma string ao usuario
+Usada para pedir ID de imagem ou nome de resource
+-------------------------------------------------------- */
+STATIC Function AskUser(cTitle, cMessage , cRet )
+Local oDlg
+Local lOk  := .F.
 
+If cRet == NIL
+	cRet := space(30)
+else
+	cRet := padr( Upper(alltrim(cRet)) , 30 )
+Endif
 
+DEFINE DIALOG oDlg TITLE (cTitle) FROM 0,0 TO 60,340 PIXEL
+
+@ 08,05 SAY oSay Prompt (cMessage) SIZE 40,13 OF oDlg PIXEL
+
+@ 05,50 GET oGet VAR cRet PICTURE "@!" SIZE 80,13  OF oDlg PIXEL
+
+DEFINE SBUTTON osBtn01  FROM 05 , 140  TYPE 01 ACTION ( lOk := .T. , oDlg:End() ) OF oDlg  ENABLE
+DEFINE SBUTTON osBtn02  FROM 15 , 140  TYPE 02 ACTION ( lOk := .F. , oDlg:End() ) OF oDlg  ENABLE
+
+ACTIVATE DIALOG oDlg CENTER
+
+Return IIF( lOk , Alltrim(cRet) , '' )
 
