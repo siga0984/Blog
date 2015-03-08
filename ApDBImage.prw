@@ -32,12 +32,23 @@ CLASS APDBIMAGE
    
 ENDCLASS
 
+/* ---------------------------------------------------------
+Construtor da classe de Imagens no SGDB
+Apenas inicializa propriedades
+-------------------------------------------------------- */
 METHOD New() CLASS APDBIMAGE
 ::bOpened := .F.
 ::bExclusive := .F. 
 ::cError := ''
 Return self
 
+
+/* ---------------------------------------------------------
+Abre a tabela de imagens no SGDB
+Conecta no DBAccess caso nao haja conexão
+Pode ser especificado abertura em exclusivo 
+para fazer SHRINK das imagens deletadas, por exemplo  
+--------------------------------------------------------- */
 
 METHOD Open( lExclusive ) CLASS APDBIMAGE
 Local nDBHnd := -1
@@ -50,7 +61,7 @@ DEFAULT lExclusive := .F.
 
 If !TcIsConnected()
 	nDBHnd := tcLink("MSSQL/STRESS","localhost",7890)
-	If 	nDBHnd < 0
+	If nDBHnd < 0
 		::cError := "TcLink() error "+cValToChar(nDbHnd)
 		Return .F.
 	Endif
@@ -61,6 +72,7 @@ If !TCCanOpen("ZDBIMAGE")
 	// Cria array com a estrutura da tabela
 	aAdd(aStru,{"ZDB_IMGID"  ,"C",40,0})
 	aAdd(aStru,{"ZDB_TYPE"   ,"C",3,0}) // BMP JPG PNG 
+	aAdd(aStru,{"ZDB_HASH"   ,"C",32,0}) 
 	aAdd(aStru,{"ZDB_SIZE"   ,"N",8,0})
 	aAdd(aStru,{"ZDB_MEMO"   ,"M",10,0})
 
@@ -117,7 +129,12 @@ Endif
 Return ::bOpened
 
 
-METHOD ReadStr( cImgId , cImgType, cImgBuffer ) CLASS APDBIMAGE
+/* ---------------------------------------------------------
+Le uma imagem do banco para a memoria
+recebe o nome da imgem, retorna por referencia o tipo
+da imagem e seu conteudo 
+-------------------------------------------------------- */
+METHOD ReadStr( cImgId , /* @ */cImgType, /* @ */ cImgBuffer ) CLASS APDBIMAGE
 Local bOk  := .F.
 
 ::cError := ''  
@@ -144,7 +161,10 @@ Endif
 
 Return bOk
 
-
+/* ---------------------------------------------------------
+Insere uma imagem na tabela de imagens do SGDB
+Recebe o ID da imagem, o tipo e o buffer 
+-------------------------------------------------------- */
 METHOD Insert( cImgId , cImgType, cImgBuffer ) CLASS APDBIMAGE
 Local bOk  := .F.
 
@@ -160,12 +180,18 @@ If empty(cImgId)
 	Return .F. 
 Endif
 
+If empty(cImgType)
+	::cError := "APDBIMAGE:Insert() Error: ImageType not specified."
+	Return .F. 
+Endif
+
 If !ZDBIMAGE->(DbSeek(cImgId))
 	// Se a imagem não existe, insere
 	ZDBIMAGE->(DBAppend(.T.))
 	ZDBIMAGE->ZDB_IMGID := cImgId
 	ZDBIMAGE->ZDB_TYPE  := cImgType
 	ZDBIMAGE->ZDB_SIZE  := len(cImgBuffer)
+	ZDBIMAGE->ZDB_HASH  := Md5(cImgBuffer,2) // Hash String Hexadecimal
 	ZDBIMAGE->ZDB_MEMO  := cImgBuffer
 	ZDBIMAGE->(DBRUnlock())
 	bOk := .T.
@@ -175,7 +201,10 @@ Endif
 
 Return bOk
 
-
+/* ---------------------------------------------------------
+Atualiza uma imagem ja existente no banco de imagens
+Recebe ID, tipo e buffer
+-------------------------------------------------------- */
 METHOD Update( cImgId , cImgType, cImgBuffer ) CLASS APDBIMAGE
 
 ::cError := ''  
@@ -190,11 +219,17 @@ If empty(cImgId)
 	Return .F. 
 Endif
 
+If empty(cImgType)
+	::cError := "APDBIMAGE:Update() Error: ImageType not specified."
+	Return .F. 
+Endif
+
 If ZDBIMAGE->(DbSeek(cImgId))
 	// Se a imagem  existe, atualiza
 	IF ZDBIMAGE->(DbrLock(recno()))
 		ZDBIMAGE->ZDB_TYPE  := cImgType
 		ZDBIMAGE->ZDB_SIZE  := len(cImgBuffer)
+		ZDBIMAGE->ZDB_HASH  := Md5(cImgBuffer,2) // Hash String Hexadecimal
 		ZDBIMAGE->ZDB_MEMO  := cImgBuffer
 		ZDBIMAGE->(DBRUnlock())
 		Return .T.
@@ -206,6 +241,10 @@ Endif
 
 Return .F. 
 
+/* ---------------------------------------------------------
+Deleta ( marca para deleção ) uma imagem do Banco de Imagens
+Recebe apenas o ID da imagem
+-------------------------------------------------------- */
 
 METHOD Delete( cImgId ) CLASS APDBIMAGE
 Local nRecNo
@@ -244,6 +283,9 @@ Endif
 
 Return .F. 
 
+/* ---------------------------------------------------------
+Fecha a tabela de imagens
+-------------------------------------------------------- */
 
 METHOD Close() CLASS APDBIMAGE
 
@@ -257,6 +299,13 @@ Endif
 
 Return .T. 
 
+
+/* ---------------------------------------------------------
+Faz a deleção fisica dos registros marcados para deleção
+Requer a tabela de imagens aberta em modo exclusivo 
+Esla operação pode demorar, dependendo da quantidade de imagens
+marcadas para deleção. 
+-------------------------------------------------------- */
 
 METHOD Shrink() CLASS APDBIMAGE
 
@@ -282,14 +331,14 @@ ZDBIMAGE->(Pack())
 
 Return .T.
 
-/*
+/* ---------------------------------------------------------
 Metodo      Status()
 Classe      APDBIMAGE
 Descrição   Monta array por referencia contendo as informações da base 
             de imagens: Quantidade de registros total, tamanho estimado 
             total das imagens, quantidade de registros marcados para 
             deleção e tamanho estimado de imagens marcadas para deleçao 
-*/
+-------------------------------------------------------- */
 
 METHOD Status( /* @ */ aStat ) CLASS APDBIMAGE
 Local cOldAlias := Alias()
@@ -309,7 +358,7 @@ aadd(aStat , {"TOTAL_RECORDS",QRY->TOTAL})
 USE
                                                                                   
 cQuery := "SELECT ZDB_TYPE, SUM(ZDB_SIZE) AS TOTAL FROM ZDBIMAGE "+;
-          "WHERE D_E_L_E_T_ != '*' ORDER BY ZDB_TYPE GROUP BYZ DB_TYPE"
+          "WHERE D_E_L_E_T_ != '*' GROUP BY ZDB_TYPE ORDER BY ZDB_TYPE"
           
 USE (TcGenQry(,,cQuery)) ALIAS QRY EXCLUSIVE NEW VIA "TOPCONN"
 While !eof()
@@ -324,7 +373,7 @@ aadd(aStat , {"DELETED_RECORDS",QRY->TOTAL})
 USE
 
 cQuery := "SELECT ZDB_TYPE, SUM(ZDB_SIZE) AS TOTAL FROM ZDBIMAGE "+;
-          "WHERE D_E_L_E_T_ = '*' ORDER BY ZDB_TYPE GROUP BYZ DB_TYPE"
+          "WHERE D_E_L_E_T_ != '*' GROUP BY ZDB_TYPE ORDER BY ZDB_TYPE"
           
 USE (TcGenQry(,,cQuery)) ALIAS QRY EXCLUSIVE NEW VIA "TOPCONN"
 While !eof()
@@ -351,7 +400,7 @@ Nao requer que a instancia esteja inicializada / Aberta
 --------------------------------------------------------- */
 
 METHOD LoadFrom( cFile, /* @ */ cImgBuffer ) CLASS APDBIMAGE
-Local nH, nSize, cBuffer := '' , nRead
+Local nH, nSize, nRead
 ::cError := ''  
 
 If !file(cFile)
@@ -383,13 +432,14 @@ Endif
 
 // Aloca buffer para ler o arquivo do disco 
 // e le o arquivo para a memoria
-cBuffer := space(nSize)
-nRead := fRead(nH,@cBuffer,nSize)           
+cImgBuffer := space(nSize)
+nRead := fRead(nH,@cImgBuffer,nSize)           
 
 // e fecha o arquivo no disco 
 fClose(nH)
 
 If nRead < nSize
+	cImgBuffer := ''
 	::cError := "APDBIMAGE:LoadFrom() Read Error ( FERROR "+cValToChar( Ferror() )+")" 
 	Return .F. 
 Endif
