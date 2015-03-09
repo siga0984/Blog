@@ -200,7 +200,7 @@ If !ZDBIMAGE->(DbSeek(cImgId))
 	ZDBIMAGE->ZDB_TYPE  := cImgType
 	ZDBIMAGE->ZDB_SIZE  := len(cImgBuffer)
 	ZDBIMAGE->ZDB_HASH  := Md5(cImgBuffer,2) // Hash String Hexadecimal
-	ZDBIMAGE->ZDB_MEMO  := Encode65(cImgBuffer)
+	ZDBIMAGE->ZDB_MEMO  := Encode64(cImgBuffer)
 	ZDBIMAGE->(DBRUnlock())
 	bOk := .T.
 else
