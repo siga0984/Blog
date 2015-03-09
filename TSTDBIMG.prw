@@ -6,39 +6,40 @@ Autor      Júlio Wittwer
 Versão     1.150308
 Data       27/02/2015
 Descrição  Função de teste da classe ApDBImage, para lidar com imagens
-armazenadas no Banco de Dados
+           armazenadas no Banco de Dados
+
+Observações 
+
+A configuração MEMOMEGA precisa estar habilitada para ser possivel]
+armazenar imagens no SGDB até 1 MB. Sem esta configuração, o valor
+máximo de armazenamento são 64 KB.
 
 Referências
 
+http://tdn.totvs.com/pages/viewpage.action?pageId=6065746
 http://tdn.totvs.com/display/tec/Como+alinhar+controles+em+uma+janela
 http://tdn.totvs.com/display/tec/cGetFile
 
 Alinhamento de componentes de interface
 
-CONTROL_ALIGN_ALLCLIENT  // Alinha preenchendo todo o conteúdo da Janela ou Painel onde estiver
+CONTROL_ALIGN_ALLCLIENT  // Alinha usando todo o espaço do container 
 CONTROL_ALIGN_TOP        // Alinha ao Topo
 CONTROL_ALIGN_BOTTOM     // Alinha ao Rodapé
 CONTROL_ALIGN_LEFT       // Alinha à Esquerda
 CONTROL_ALIGN_RIGHT      // Alinha à Direita
-CONTROL_ALIGN_NONE       // Não utiliza alinhamento
+CONTROL_ALIGN_NONE       // Não utiliza nenhum alinhamento
 
 ==================================================================== */
 
-// Imagem atual mostrada na interface
-STATIC _cImageName := ""
-STATIC _nImageFrom := 0
-STATIC _oBmp
-STATIC _oScroll
+STATIC _cImageName := ""  // Imagem atual mostrada na interface
+STATIC _nImageFrom := 0   // Origem da imagem ( disco, rpo ou dbimage )
+STATIC _cTmpFile   := ""  // Arquivo temporário para visualização 
+STATIC _oScroll           // Objeto Scroll na interfcace
+STATIC _oBmp              // Objeto tBitmap() na interface 
+
 
 User Function TSTDBIMG()
 Local oDBImg
-
-/*
-If MsgYesNo("apaga banco de imagens")
-	tcLink("MSSQL/STRESS","localhost",7890)
-	tcdelfile("ZDBIMAGE")
-Endif
-*/
 
 // Informa para a interface o tema DEFAULT
 PTSetTheme("OCEAN")
@@ -70,14 +71,14 @@ _oScroll:align := CONTROL_ALIGN_ALLCLIENT
 @ 10,05 BUTTON oButton1 PROMPT "Ler do &Disco" ;
 	ACTION (LoadFromDSK()) SIZE 080, 15 of oPanelMenu  PIXEL
 
-@ 30,05 BUTTON oButton1 PROMPT "Ler do &RPO" ;
+@ 30,05 BUTTON oButton2 PROMPT "&Salvar em Disco" ;
+	ACTION (SaveToDisk(oDBImg)) SIZE 080, 15 of oPanelMenu  PIXEL
+
+@ 50,05 BUTTON oButton1 PROMPT "Ler do &RPO" ;
 	ACTION (LoadFromRPO()) SIZE 080, 15 of oPanelMenu  PIXEL
 
-@ 50,05 BUTTON oButton1 PROMPT "Ler do DB&IMAGE" ;
+@ 70,05 BUTTON oButton1 PROMPT "Ler do DB&IMAGE" ;
 	ACTION (LoadFromDBI(oDBImg)) SIZE 080, 15 of oPanelMenu  PIXEL
-
-@ 70,05 BUTTON oButton2 PROMPT "&Salvar em Disco" ;
-	ACTION (SaveToDisk(oDBImg)) SIZE 080, 15 of oPanelMenu  PIXEL
 
 @ 90,05 BUTTON oButton1 PROMPT "I&nserir no DBIMAGE" ;
 	ACTION (InsertDBImg(oDBImg)) SIZE 080, 15 of oPanelMenu  PIXEL
@@ -93,6 +94,9 @@ _oScroll:align := CONTROL_ALIGN_ALLCLIENT
 
 ACTIVATE DIALOG oDlg CENTER
 
+// Limpa o arquivo temporario de visualização de imagem do disco 
+FreeTMPFile()
+
 // Fecha o DBImage
 oDBImg:Close()
 
@@ -107,7 +111,8 @@ STATIC Function LoadFromDSK()
 Local cImgFile := ''
 Local cImgType := ''
 
-cImgFile := cGetFile("ahbahba","*.bmp;*.png",0,"\",.F., NIL ,.T.)
+cImgFile := cGetFile("Imagem BMP|*.bmp|Imagem JPEG|*.jpg|Imagem PNG|*.png",;
+                     "Abrir imagem do disco",0,"\",.F., NIL ,.T.)
 
 If !empty(cImgFile)
 	
@@ -167,7 +172,7 @@ STATIC Function LoadFromDBI(oDBImg)
 Local cImgId
 Local cImgBuffer := ''
 Local cImgType := ''
-Local cTmpFile := '\tmpimage.'
+Local cTmpFile 
 
 cImgId := AskUser("Abrir imagem do DBIMAGE","ImageId")
 
@@ -181,14 +186,11 @@ If !empty(cImgId)
 	
 	// Imagem carregada do Banco na memoria
 	// Agora salva em um arquivo temporario
-	
+	            
+	// Usa uma funcao para gerar um nome temporario 
 	// A extensao do temporario deve ser o tipo da imagem
-	cTmpFile += lower(cImgType)
+	cTmpFile := GetTmpFile( lower(cImgType) )
 	
-	if file(cTmpFile)
-		Ferase(cTmpFile)
-	Endif
-
 	// Salva a imagem no temporario do disco 	
 	If !oDBImg:SaveTo( cTmpFile , cImgBuffer )
 		MsgStop(oDBImg:cError,"LoadFromDBI")
@@ -213,24 +215,37 @@ Grava a imagem atualmente em foco no disco
 STATIC Function SaveToDisk(oDBImg)
 Local cImgSave
 Local cImgType := ''
-Local cImgBuffer := ''
+Local cImgBuffer := ''         
+Local cFType := ''
 
 If empty( _cImageName )
 	MsgInfo("Nao há imagem na interface para salvar em disco.")
 	Return
 Endif
 
-cImgSave := cGetFile(NIL,NIL,1,"\",.T., NIL ,.T.)
+cImgSave := cGetFile("Imagem BMP|*.bmp|Imagem JPEG|*.jpg|Imagem PNG|*.png",;
+                     "Salvar imagem como",1,"\",.T., NIL ,.T.)
 
 If empty(cImgSave)
 	Return
 Endif
 
+// Carrega a imagem na memoria 
 If !LoadCurrentImage(oDBImg,@cImgBuffer,@cImgType)
 	Return
 Endif
 
-If !"."$cImgSave
+If "."$cImgSave
+	// Foi informada uma extensao para gravar a imagem
+	If !ImgFileType( cImgFile , @cFType )
+		MsgStop("Tipo de imagem não suportado.")
+		Return
+	Endif
+	If lower(cFType) != lower(cImgType)
+		MsgStop("Extensão inválida. Esta imagem deve ser gravada como ["+cImgType+"]")
+		Return
+	Endif
+Else
 	cImgSave += ("." + cImgType )
 Endif
 
@@ -348,12 +363,13 @@ Return
 
 /* --------------------------------------------------------
 Mostra mensagem de estatisticas do banco de imagens
-Monta im HTML monoespaçado para ser mostrado pela função MsgInfo()
+Monta um HTML com texto monoespaçado para ser mostrado 
+pela função MsgInfo()
 -------------------------------------------------------- */
 STATIC Function DBImgStat(oDBImg)
 Local aStatus := {}
 Local nI
-Local cHtml := '<html><pre><hr>'
+Local cHtml := '<html><hr><pre>'
 
 If !oDBImg:Status( @aStatus )
 	MsgStop(oDBImg:cError,"DBImgStat")
@@ -408,6 +424,8 @@ If _nImageFrom == 1
 	Endif	
 
 ElseIf _nImageFrom == 2
+
+	// Le arquivo de imagem gravado como resource do Repositorio 
 	
 	If !LoadRes(_cImageName,@cImgType,@cImgBuffer)
 		MsgStop("Resource ["+_cImageName+"] não encontrado.","LoadImage")
@@ -416,7 +434,8 @@ ElseIf _nImageFrom == 2
 
 ElseIf _nImageFrom == 3
 	
-	// Carrega DBImage para a memoria
+	// Carrega imagem da tabenla do DBImage para a memoria
+
 	If !oDBImg:ReadStr(_cImageName,@cImgType,@cImgBuffer)
 		MsgStop(oDBImg:cError,"LoadImage")
 		Return .F. 
@@ -483,26 +502,53 @@ Return
 Tela de interface para perguntar uma string ao usuario
 Usada para pedir ID de imagem ou nome de resource
 -------------------------------------------------------- */
-STATIC Function AskUser(cTitle, cMessage , cRet )
+STATIC Function AskUser(cTitle, cMessage , cVarGet )
 Local oDlg
 Local lOk  := .F.
 
-If cRet == NIL
-	cRet := space(30)
+If cVarGet == NIL
+	cVarGet := space(40)
 else
-	cRet := padr( Upper(alltrim(cRet)) , 30 )
+	cVarGet := padr( lower(alltrim(cVarGet)) , 40 )
 Endif
 
 DEFINE DIALOG oDlg TITLE (cTitle) FROM 0,0 TO 60,340 PIXEL
 
 @ 08,05 SAY oSay Prompt (cMessage) SIZE 40,13 OF oDlg PIXEL
 
-@ 05,50 GET oGet VAR cRet PICTURE "@!" SIZE 80,13  OF oDlg PIXEL
+@ 05,50 GET oGet VAR cVarGet SIZE 80,13 OF oDlg PIXEL
 
-DEFINE SBUTTON osBtn01  FROM 05 , 140  TYPE 01 ACTION ( lOk := .T. , oDlg:End() ) OF oDlg  ENABLE
-DEFINE SBUTTON osBtn02  FROM 15 , 140  TYPE 02 ACTION ( lOk := .F. , oDlg:End() ) OF oDlg  ENABLE
+DEFINE SBUTTON osBtn01  FROM 05 , 140  TYPE 01 ;
+   ACTION ( lOk := .T. , oDlg:End() ) OF oDlg  ENABLE
+DEFINE SBUTTON osBtn02  FROM 15 , 140  TYPE 02 ;
+   ACTION ( lOk := .F. , oDlg:End() ) OF oDlg  ENABLE
 
 ACTIVATE DIALOG oDlg CENTER
 
-Return IIF( lOk , Alltrim(cRet) , '' )
+If !lOk
+	// Usuário cancelou, retorna string em branco
+  Return ''
+Endif
+ 
+// Usuário confirmou, retorna a string 
+// informada sem espaços adjacentes
+Return Alltrim(cVarGet)
+
+// Retorna um nome de arquivo temporário 
+// para visualização de imagem na interface
+// Caso já tenha um arquivo em uso, o mesmo é eliminado
+STATIC Function GetTmpFile( cFileExt )
+FreeTMPFile()
+_cTmpFile := 'tmp'+strzero(seconds()*100,7)+'.'+lower(cFileExt)
+Return _cTmpFile
+
+// Caso tenha algum arquivo temporario 
+// para imagem em uso, elimina
+STATIC Function FreeTMPFile()
+If !empty(_cTmpFile)
+	Ferase(_cTmpFile)
+Endif
+_cTmpFile := ''
+Return
+
 

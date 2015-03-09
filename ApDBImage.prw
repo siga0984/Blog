@@ -8,8 +8,24 @@ Versão    1.150308
 Descrição Classe para encapsular leitura e gravação de 
           imagens em tabela do SGDB através do DBACCESS
 
-Observação	Trabalha com ImahgeID e ImageType em caixa baixa
+Observação
+
+Como apenas o banco MSSQL aceita conteúdo binário ( ASCII 0 a 255 )
+para campos MEMO, e os bancos ORACLE e DB2 ( quando usado BLOB ), 
+para servir para todos os bancos, a imagem é gravada no banco 
+usando Encode64 -- para converter conteúdo binário em Texto 
+codificado em Base64, a maior imagem nao pode ter mais de 745000 bytes
+
+Referências
+
+http://tdn.totvs.com/display/tec/Acesso+ao+banco+de+dados+via+DBAccess
+http://tdn.totvs.com/pages/viewpage.action?pageId=6063692
+http://tdn.totvs.com/display/tec/Encode64
+http://tdn.totvs.com/display/tec/Decode64
+
 --------------------------------------------------- */
+
+#define MAX_IMAGE_SIZE 	745000
 
 CLASS APDBIMAGE
 
@@ -60,8 +76,10 @@ IF ::bOpened
 	Return .T.
 Endif
 
-If !TcIsConnected()
-	nDBHnd := tcLink("MSSQL/STRESS","localhost",7890)
+If !TcIsConnected()  
+	// Se não tem conexão com o DBAccess, cria uma agora
+	// Utiliza as configurações default do appserver.ini
+	nDBHnd := tcLink()
 	If nDBHnd < 0
 		::cError := "TcLink() error "+cValToChar(nDbHnd)
 		Return .F.
@@ -133,6 +151,8 @@ If empty(cImgId)
 	Return .F. 
 Endif
 
+cImgId := Lower(cImgId)
+
 If !ZDBIMAGE->(DbSeek(cImgId))
 	::cError := "APDBIMAGE:ReadStr() ImageId ["+cImgId+"] not found."
 	Return .F.
@@ -140,7 +160,7 @@ Endif
 
 // Caso a imagem com o ID informado seja encontrada
 // Carrega o buffer da imagem para a variável de memória
-cImgBuffer := ZDBIMAGE->ZDB_MEMO
+cImgBuffer := Decode64(ZDBIMAGE->ZDB_MEMO)
 cImgType   := ZDBIMAGE->ZDB_TYPE
 
 Return .T.
@@ -180,7 +200,7 @@ If !ZDBIMAGE->(DbSeek(cImgId))
 	ZDBIMAGE->ZDB_TYPE  := cImgType
 	ZDBIMAGE->ZDB_SIZE  := len(cImgBuffer)
 	ZDBIMAGE->ZDB_HASH  := Md5(cImgBuffer,2) // Hash String Hexadecimal
-	ZDBIMAGE->ZDB_MEMO  := cImgBuffer
+	ZDBIMAGE->ZDB_MEMO  := Encode65(cImgBuffer)
 	ZDBIMAGE->(DBRUnlock())
 	bOk := .T.
 else
@@ -229,7 +249,7 @@ Endif
 ZDBIMAGE->ZDB_TYPE  := cImgType
 ZDBIMAGE->ZDB_SIZE  := len(cImgBuffer)
 ZDBIMAGE->ZDB_HASH  := MD5(cImgBuffer,2) // Hash String Hexadecimal
-ZDBIMAGE->ZDB_MEMO  := cImgBuffer
+ZDBIMAGE->ZDB_MEMO  := Encode64(cImgBuffer)
 
 ZDBIMAGE->(DBRUnlock())
 
@@ -307,7 +327,9 @@ Descrição   Monta array por referencia contendo as informações da base
 
 METHOD Status( /* @ */ aStat ) CLASS APDBIMAGE
 Local cOldAlias := Alias()
-Local cQuery
+Local cQuery                  
+Local nCountAll := 0
+Local nSizeAll := 0
 
 ::cError := ''  
 aStat := {}
@@ -317,40 +339,35 @@ If !::bOpened
 	Return .F. 
 Endif
 
-cQuery := "SELECT Count(*) AS TOTAL FROM ZDBIMAGE WHERE D_E_L_E_T_ != '*'"
+// Conta quantas imagens tem na tabela, por tipo 
+cQuery := "SELECT ZDB_TYPE, count(*) AS TOTAL"+;
+          " FROM ZDBIMAGE GROUP BY ZDB_TYPE ORDER BY ZDB_TYPE"
+          
 USE (TcGenQry(,,cQuery)) ALIAS QRY EXCLUSIVE NEW VIA "TOPCONN"
-aadd(aStat , {"TOTAL_RECORDS",QRY->TOTAL})
+While !eof()
+	aadd(aStat , {"TOTAL_COUNT_"+QRY->ZDB_TYPE,QRY->TOTAL})
+	nCountAll += QRY->TOTAL
+	DbSkip()
+Enddo
 USE
+
+// Acrescenta total de imagens
+aadd(aStat , {"TOTAL_COUNT_ALL",nCountAll})
                                                                                   
-cQuery := "SELECT ZDB_TYPE, SUM(ZDB_SIZE) AS TOTAL FROM ZDBIMAGE "+;
-          "WHERE D_E_L_E_T_ != '*' GROUP BY ZDB_TYPE ORDER BY ZDB_TYPE"
+// Levanta o total de bytes usados por tipo de imagem
+cQuery := "SELECT ZDB_TYPE, SUM(ZDB_SIZE) AS TOTAL"+;
+          " FROM ZDBIMAGE GROUP BY ZDB_TYPE ORDER BY ZDB_TYPE"
           
 USE (TcGenQry(,,cQuery)) ALIAS QRY EXCLUSIVE NEW VIA "TOPCONN"
 While !eof()
 	aadd(aStat , {"TOTAL_SIZE_"+QRY->ZDB_TYPE,QRY->TOTAL})
+	nSizeAll += QRY->TOTAL
 	DbSkip()
 Enddo
 USE
 
-cQuery := "SELECT Count(*) AS TOTAL FROM ZDBIMAGE WHERE D_E_L_E_T_ = '*'"
-USE (TcGenQry(,,cQuery)) ALIAS QRY EXCLUSIVE NEW VIA "TOPCONN"
-aadd(aStat , {"DELETED_RECORDS",QRY->TOTAL})
-USE
-
-cQuery := "SELECT ZDB_TYPE, SUM(ZDB_SIZE) AS TOTAL FROM ZDBIMAGE "+;
-          "WHERE D_E_L_E_T_ != '*' GROUP BY ZDB_TYPE ORDER BY ZDB_TYPE"
-          
-USE (TcGenQry(,,cQuery)) ALIAS QRY EXCLUSIVE NEW VIA "TOPCONN"
-While !eof()
-	aadd(aStat , {"DELETED_SIZE_"+QRY->ZDB_TYPE,QRY->TOTAL})
-	DbSkip()
-Enddo
-USE
-
-cQuery := "SELECT SUM(ZDB_SIZE) AS TOTAL FROM ZDBIMAGE WHERE D_E_L_E_T_ = '*'"
-USE (TcGenQry(,,cQuery)) ALIAS QRY EXCLUSIVE NEW VIA "TOPCONN"
-aadd(aStat , {"DELETED_SIZE",QRY->TOTAL})
-USE
+// Acrescenta total de bytes usados 
+aadd(aStat , {"TOTAL_SIZE_ALL",nSizeAll})
 
 If !Empty(cOldAlias)
 	DbSelectArea(cOldAlias)
@@ -389,7 +406,7 @@ If nSize <= 0
 	Return .F. 
 Endif
 
-If nSize > 999999  
+If nSize > MAX_IMAGE_SIZE
 	::cError := "APDBIMAGE:LoadFrom() File TOO BIG ("+ cValToChar(nSize) +" bytes)" 
 	fClose(nH)
 	Return .F. 
