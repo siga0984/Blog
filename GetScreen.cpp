@@ -9,30 +9,30 @@
 
 /* ------------------------------------------------------------
 Programa  GetScreen
-Autor     J˙lio Wittwer
+Autor     J√∫lio Wittwer
 Data      07/09/2016
-DescriÁ„o DLL Win32 para uso com o TOTVS SmartClient
-          Permite a captura da tela do computador onde o SmartClient est· sendo executado
+Descri√ß√£o DLL Win32 para uso com o TOTVS SmartClient
+          Permite a captura da tela do computador onde o SmartClient est√° sendo executado
           gerada como uma imagem .JPEG salva em disco, usando o nome do arquivo fornecido 
-          como par‚metro.
+          como par√¢metro.
 
-UtilizaÁ„o 
+Utiliza√ß√£o 
 
-          Utilizar a funÁ„o ExecInClientDLL(), informando os seguintes par‚metros: 
+          Utilizar a fun√ß√£o ExecInClientDLL(), informando os seguintes par√¢metros: 
 
-          int ID => N˙mero da operaÁ„o desejada 
-                    0 = Obter a vers„o da API 
+          int ID => N√∫mero da opera√ß√£o desejada 
+                    0 = Obter a vers√£o da API 
                     1 = Capturar um ScreenShot em formato JPEG
 
-          char * BufIn => array de char contendo um par‚metro para a opÁ„o.
-          SE ID = 0, o par‚metro È ignorado e pode ser NULL
+          char * BufIn => array de char contendo um par√¢metro para a op√ß√£o.
+          SE ID = 0, o par√¢metro √© ignorado e pode ser NULL
           SE ID = 1, deve ser informado o nome do arquivo JPEG no qual a 
           captura de tela deve ser gravada. 
 
           char * BufOut => Array de char contendo o resultado da chamada, no formato 
-          NNN XXXXXXXX, onde NNN È um CÛdigo de Status , e XXXXX contÈm uma informaÁ„o 
-          adicional sobre o status retornado. Em caso de sucesso, o n˙mero retornado È "000"
-          Qualquer outro n˙mero indica uma condiÁ„o de falha. 
+          NNN XXXXXXXX, onde NNN √© um C√≥digo de Status , e XXXXX cont√©m uma informa√ß√£o 
+          adicional sobre o status retornado. Em caso de sucesso, o n√∫mero retornado √© "000"
+          Qualquer outro n√∫mero indica uma condi√ß√£o de falha. 
 
           "001 Encode size failed"
           "002 Memory allocation failed"
@@ -49,21 +49,21 @@ extern "C" __declspec(dllexport) void ExecInClientDLL( int ID, char * BufIn, cha
 
   if( ID == 0 )
   {
-    // Retorna a vers„o da DLL de captura
+    // Retorna a vers√£o da DLL de captura
     strcpy(BufOut,"000 GetScreen V 0.160911");
   }
   else if (ID == 1)
   {
     // REaliza a captura da tela
     // Recebe em BuffIn o nome do arquivo a ser salvo 
-    // Retona em buffOut o status da operaÁ„o 
+    // Retona em buffOut o status da opera√ß√£o 
     // Em caso de sucesso, retorno "000 Ok"
     // Em caso de erro, retorno "NNN <error message>"
     DoCapture(BufIn,BufOut);
   }
   else
   {
-    // ID n„o conhecido/inv·lido 
+    // ID n√£o conhecido/inv√°lido 
     strcpy(BufOut,"010 Unknow Command");
   }
 }
@@ -80,7 +80,7 @@ deste exemplo
 using namespace Gdiplus;
 using namespace std;
 
-// Inicializa GDI para a captura de vÌdeo
+// Inicializa GDI para a captura de v√≠deo
 // faz a captura, salva em disco, e finaliza GDI
 
 void DoCapture(  char * file , char * result ) 
@@ -107,7 +107,7 @@ void DoCapture(  char * file , char * result )
 
 
 // Retorna o ponteiro do encoder adequado para fazer
-// a convers„o do BITMAP em memÛria para o formato desejado
+// a convers√£o do BITMAP em mem√≥ria para o formato desejado
 
 
 int GetEncoderClsid(const WCHAR* format, CLSID* pClsid )
@@ -151,7 +151,7 @@ int GetEncoderClsid(const WCHAR* format, CLSID* pClsid )
   return -3;  
 }
 
-// Encapsula a gravaÁ„o do BITMAP capturado da tela
+// Encapsula a grava√ß√£o do BITMAP capturado da tela
 // para o formato JPEG em disco 
 
 void BitmapToJpg(HBITMAP hbmpImage, char *filename , char * result )
@@ -193,21 +193,24 @@ void BitmapToJpg(HBITMAP hbmpImage, char *filename , char * result )
 }
 
 
-// Fun„o de captura / snapshot de tela
+// Fun√£o de captura / snapshot de tela
 // Requer o ambiente DGI previamente inicializado
 
 void ScreenCapture(int x, int y, int width, int height, char *filename, char * result )
 {
-  HDC hDc = CreateCompatibleDC(0);
-  HBITMAP hBmp = CreateCompatibleBitmap(GetDC(0), width, height);
+  HDC hDcMemory = CreateCompatibleDC(0);
+  HDC hDcScreen = GetDC(0);
+  HBITMAP hBmp = CreateCompatibleBitmap(hDcScreen, width, height);
 
-  SelectObject(hDc, hBmp);
-  BitBlt(hDc, 0, 0, width, height, GetDC(0), x, y, SRCCOPY);
+  SelectObject(hDcMemory, hBmp);
+  BitBlt(hDcMemory, 0, 0, width, height, hDcScreen, x, y, SRCCOPY);
 
   // Converte a tela capturada em JPEG e salva em disco 
   BitmapToJpg(hBmp, filename , result );
 
+  // Cleanup
   DeleteObject(hBmp);
+  DeleteObject(hDcMemory);
+  ReleaseDC(NULL,hDcScreen);
 
 }
-
