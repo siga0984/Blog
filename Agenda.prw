@@ -14,6 +14,21 @@ Função principal da Agenda, CRUD básico montada em cima de uma DIALOG
 Deve ser chamada diretamente pelo SmartClient, não depende do Framework do ERP
 Criada utilizando apenas as funções básicas da linguagem AdvPL
 
+Release 1.1 em 05/10/2018
+
+Correção - Após cancelar uma alteração, atualiza os campos da tela 
+           com o conteúdo original do registro
+           
+Melhoria - Cria Novo ID apenas na hora de gravar
+
+Melhoria - Inserir validação no campo UF, para permitir ou um valor em branco, ou 
+           um valor válido
+                  
+Melhoria - Inserir campos FONE1, FONE2, e EMAIL
+
+
+Melhoria - Implementar busca indexada por ID e NOME
+
 ============================================================================= */
 
 User Function Agenda()
@@ -30,7 +45,7 @@ oFont := TFont():New('Courier new',,-14,.T.)
 
 // Cria a janela principal da Agenda como uma DIALOG
 DEFINE DIALOG oDlg TITLE (cTitle) ;
-	FROM 0,0 TO 350,800 ;
+	FROM 0,0 TO 420,830 ;
 	FONT oFont ;
 	COLOR CLR_BLACK, CLR_LIGHTGRAY PIXEL
 
@@ -53,11 +68,12 @@ Cria pain[eis e um menu de opções com botões
 ------------------------------------------ */
 
 STATIC Function doInit(oDlg)
-Local oPanel
-Local oPanelCrud
+Local oPanelMenu, oPanelCrud, oPanelNav
 Local oBtn1,oBtn2,oBtn3,oBtn4,oBtn5,oBtn6
-Local oSay1,oSay2,oSay3,oSay4,oSay5,oSay6,oSay7,oSay8
-Local oGet1,oGet2,oGet3,oGet4,oGet5,oGet6,oGet7,oGet8
+Local oSay1,oSay2,oSay3,oSay4,oSay5,oSay6,oSay7,oSay8,oSay9,oSayA,oSayB
+Local oGet1,oGet2,oGet3,oGet4,oGet5,oGet6,oGet7,oGet8,oGet9,oGetA,oGetB
+Local oBtnFirst, oBtnPrev, oBtnNext, oBtnLast, oBtnPesq, oBtnOrd
+Local oSayOrd
 Local aGets := {}
 Local aBtns := {}
 Local nMode := 0
@@ -70,6 +86,9 @@ Local cBairro  := Space(30)
 Local cCidade  := Space(40)
 Local cUF      := Space(2)
 Local cCEP     := Space(8)
+Local cFone1   := Space(20)
+Local cFone2   := Space(20)
+Local cEmail   := Space(40)
 
 CursorArrow() ; CursorWait()
 
@@ -82,25 +101,39 @@ Endif
 @ 0,0 MSPANEL oPanelMenu OF oDlg SIZE 70,600 COLOR CLR_WHITE,CLR_GRAY
 oPanelMenu:ALIGN := CONTROL_ALIGN_LEFT
 
-@ 0,0 MSPANEL oPanelCrud OF oDlg SIZE 700,600 COLOR CLR_WHITE,CLR_LIGHTGRAY
+@ 0,0 MSPANEL oPanelNav OF oDlg SIZE 70,600 COLOR CLR_WHITE,CLR_GRAY
+oPanelNav:ALIGN := CONTROL_ALIGN_RIGHT
+
+@ 0,0 MSPANEL oPanelCenter OF oDlg SIZE 700,600 COLOR CLR_WHITE,CLR_LIGHTGRAY
+oPanelCenter:ALIGN := CONTROL_ALIGN_ALLCLIENT
+
+@ 0,0 MSPANEL oPanelOrd OF oPanelCenter SIZE 100,20 COLOR CLR_WHITE,CLR_BLUE
+oPanelOrd:ALIGN := CONTROL_ALIGN_TOP
+
+@ 0,0 MSPANEL oPanelCrud OF oPanelCenter SIZE 700,600 COLOR CLR_WHITE,CLR_LIGHTGRAY
 oPanelCrud:ALIGN := CONTROL_ALIGN_ALLCLIENT
+                
+// Mostra Ordenação atual do arquivo de agenda 
+
+@   5,5 SAY oSayOrd PROMPT " " SIZE 100,12 COLOR CLR_WHITE,CLR_BLUE OF oPanelOrd PIXEL
+oSayOrd:SetText("Ordem .... "+ AGENDA->(IndexKey()))
 
 // Cria os botões no Painel Lateral ( Menu )
 
 @ 05,05  BUTTON oBtn1 PROMPT "Incluir" SIZE 60,15 ;
-	ACTION ManAgenda(oDlg,aBtns,aGets,1,@nMode) OF oPanelMenu PIXEL
+	ACTION ManAgenda(oDlg,aBtns,aGets,1,@nMode,oSayOrd) OF oPanelMenu PIXEL
 aadd(aBtns,oBtn1) // Botcao de Inclusao
 
 @ 20,05  BUTTON oBtn2 PROMPT "Alterar" SIZE 60,15 ;
-	ACTION ManAgenda(oDlg,aBtns,aGets,2,@nMode) OF oPanelMenu PIXEL
+	ACTION ManAgenda(oDlg,aBtns,aGets,2,@nMode,oSayOrd) OF oPanelMenu PIXEL
 aadd(aBtns,oBtn2) // Botao de alteração
 
 @ 35,05  BUTTON oBtn3 PROMPT "Excluir" SIZE 60,15 ;
-	ACTION ManAgenda(oDlg,aBtns,aGets,3,@nMode) OF oPanelMenu PIXEL
+	ACTION ManAgenda(oDlg,aBtns,aGets,3,@nMode,oSayOrd) OF oPanelMenu PIXEL
 aadd(aBtns,oBtn3) // Botão de exclusão
 
 @ 50,05  BUTTON oBtn4 PROMPT "Consultar" SIZE 60,15 ;
-	ACTION ManAgenda(oDlg,aBtns,aGets,4,@nMode) OF oPanelMenu PIXEL
+	ACTION ManAgenda(oDlg,aBtns,aGets,4,@nMode,oSayOrd) OF oPanelMenu PIXEL
 aadd(aBtns,oBtn4) // Botão de Consulta - Navegação
 
 @ 65,05  BUTTON oBtn5 PROMPT "Sair" SIZE 60,15 ;
@@ -120,14 +153,24 @@ aadd(aBtns,oBtn4) // Botão de Consulta - Navegação
 @  95+3,05 SAY oSay7 PROMPT "UF"          RIGHT SIZE 50,12 OF oPanelCrud PIXEL
 @ 110+3,05 SAY oSay8 PROMPT "CEP"         RIGHT SIZE 50,12 OF oPanelCrud PIXEL
 
+// Novos campos inseridos em 07/10
+@ 125+3,05 SAY oSay9 PROMPT "Fone 1"      RIGHT SIZE 50,12 OF oPanelCrud PIXEL
+@ 140+3,05 SAY oSayA PROMPT "Fone 2"      RIGHT SIZE 50,12 OF oPanelCrud PIXEL
+@ 155+3,05 SAY oSayB PROMPT "e-Mail"      RIGHT SIZE 50,12 OF oPanelCrud PIXEL
+
 @   5,60 GET oGet1 VAR cID          PICTURE "@!"   SIZE CALCSIZEGET(6) ,12 OF oPanelCrud PIXEL
 @  20,60 GET oGet2 VAR cNome        PICTURE "@!"   SIZE CALCSIZEGET(50),12 OF oPanelCrud PIXEL
 @  35,60 GET oGet3 VAR cEnder       PICTURE "@!"   SIZE CALCSIZEGET(50),12 OF oPanelCrud PIXEL
 @  50,60 GET oGet4 VAR cCompl       PICTURE "@!"   SIZE CALCSIZEGET(20),12 OF oPanelCrud PIXEL
 @  65,60 GET oGet5 VAR cBairro      PICTURE "@!"   SIZE CALCSIZEGET(30),12 OF oPanelCrud PIXEL
 @  80,60 GET oGet6 VAR cCidade      PICTURE "@!"   SIZE CALCSIZEGET(40),12 OF oPanelCrud PIXEL
-@  95,60 GET oGet7 VAR cUF          PICTURE "!!"   SIZE CALCSIZEGET(2) ,12 OF oPanelCrud PIXEL
+@  95,60 GET oGet7 VAR cUF          PICTURE "!!"   SIZE CALCSIZEGET(2) ,12 VALID VldUf(cUF) OF oPanelCrud PIXEL
 @ 110,60 GET oGet8 VAR cCEP         PICTURE "@R 99999-999" SIZE CALCSIZEGET(9),12 OF oPanelCrud PIXEL
+
+// Novos campos inseridos em 07/10
+@ 125,60 GET oGet9 VAR cFone1       PICTURE "@!" SIZE CALCSIZEGET(20),12 OF oPanelCrud PIXEL
+@ 140,60 GET oGetA VAR cFone2       PICTURE "@!" SIZE CALCSIZEGET(20),12 OF oPanelCrud PIXEL
+@ 155,60 GET oGetB VAR cEMAIL       PICTURE "@!" SIZE CALCSIZEGET(40),12 OF oPanelCrud PIXEL
 
 // Acrescenta no array de GETS o nome do campo
 // o objeto TGET correspondente
@@ -142,33 +185,46 @@ aadd( aGets , {"CIDADE" , oGet6 , space(40) } )
 aadd( aGets , {"UF"     , oGet7 , space(2)  } )
 aadd( aGets , {"CEP"    , oGet8 , space(8)  } )
 
+// Novos campos inseridos em 07/10
+aadd( aGets , {"FONE1"  , oGet9 , space(20)  } )
+aadd( aGets , {"FONE2"  , oGetA , space(20)  } )
+aadd( aGets , {"EMAIL"  , oGetB , space(40)  } )
+
 // Cria os Botões de Ação sobre os dados
-@ 130,60  BUTTON oBtnConf PROMPT "Confirmar" SIZE 50,15 ;
+@ 175,60  BUTTON oBtnConf PROMPT "Confirmar" SIZE 60,15 ;
 	ACTION ManAgenda(oDlg,aBtns,aGets,5,@nMode)  OF oPanelCrud PIXEL
 
 aadd(aBtns,oBtnConf) // [5] Botão de Confirmaçáo
 
-@ 130,125  BUTTON oBtnCanc PROMPT "Voltar" SIZE 50,15 ;
+@ 175,125  BUTTON oBtnCanc PROMPT "Voltar" SIZE 60,15 ;
 	ACTION ManAgenda(oDlg,aBtns,aGets,6,@nMode)  OF oPanelCrud PIXEL
 
 aadd(aBtns,oBtnCanc) // [6] Botão de Cancelamento
 
 // Cria os Botões de Navegação Livre
-@ 150,60  BUTTON oBtnFirst PROMPT "Primeiro" SIZE 50,15 ;
-	ACTION ManAgenda(oDlg,aBtns,aGets,7,@nMode)  OF oPanelCrud PIXEL
+@ 05,05  BUTTON oBtnFirst PROMPT "Primeiro" SIZE 60,15 ;
+	ACTION ManAgenda(oDlg,aBtns,aGets,7,@nMode)  OF oPanelNav PIXEL
 aadd(aBtns,oBtnFirst) // [7] Primeiro
 
-@ 150,125  BUTTON oBtnPrev PROMPT "Anterior" SIZE 50,15 ;
-	ACTION ManAgenda(oDlg,aBtns,aGets,8,@nMode)  OF oPanelCrud PIXEL
+@ 020,05  BUTTON oBtnPrev PROMPT "Anterior" SIZE 60,15 ;
+	ACTION ManAgenda(oDlg,aBtns,aGets,8,@nMode)  OF oPanelNav PIXEL
 aadd(aBtns,oBtnPrev) // [8] Anterior
 
-@ 150,190  BUTTON oBtnNext PROMPT "Próximo" SIZE 50,15 ;
-	ACTION ManAgenda(oDlg,aBtns,aGets,9,@nMode)  OF oPanelCrud PIXEL
+@ 35,05  BUTTON oBtnNext PROMPT "Próximo" SIZE 60,15 ;
+	ACTION ManAgenda(oDlg,aBtns,aGets,9,@nMode)  OF oPanelNav PIXEL
 aadd(aBtns,oBtnNext) // [9] Proximo
 
-@ 150,255  BUTTON oBtnLast PROMPT "Último" SIZE 50,15 ;
-	ACTION ManAgenda(oDlg,aBtns,aGets,10,@n     Mode)  OF oPanelCrud PIXEL
+@ 50,05  BUTTON oBtnLast PROMPT "Último" SIZE 60,15 ;
+	ACTION ManAgenda(oDlg,aBtns,aGets,10,@nMode)  OF oPanelNav PIXEL
 aadd(aBtns,oBtnLast) // [10] Último
+
+@ 65,05  BUTTON oBtnPesq PROMPT "Pesquisa" SIZE 60,15 ;
+	ACTION ManAgenda(oDlg,aBtns,aGets,11,@nMode,oSayOrd)  OF oPanelNav PIXEL
+aadd(aBtns,oBtnPesq) // [11] Pesquisa
+
+@ 80,05  BUTTON oBtnOrd PROMPT "Ordem" SIZE 60,15 ;
+	ACTION ManAgenda(oDlg,aBtns,aGets,12,@nMode,oSayOrd)  OF oPanelNav PIXEL
+aadd(aBtns,oBtnOrd) // [12] Ordem
 
 // Seta a interface para o estado inicial
 // Habilita apenas inserção e consulta 
@@ -197,6 +253,8 @@ STATIC Function OpenAgenda()
 Local nH
 Local cFile := "AGENDA"
 Local aStru := {}
+Local aDbStru := {}
+Local nRet
 
 // Conecta com o DBAccess configurado no ambiente
 nH := TCLink()
@@ -206,45 +264,105 @@ If nH < 0
 	QUIT
 Endif
 
-If !tccanopen(cFile)
+// Coloca um MUTEX na operação de criar/abrir o arquivo de Agenda
+// Assim apenas um processo por vez realiza a manutenção nas
+// estruturas ou indices, caso necessario 
+
+While !GlbNmLock("AGENDA_DB")
+	If !MsgYesNo("Existe outro processo abrindo a Agenda. Deseja tentar novamente ?")
+		MSgStop("Abertura da Agenda em uso -- tente novamente mais tarde.")
+		QUIT
+	Endif
+Enddo
+
+// Cria o array com os campos do arquivo 
+	
+aadd(aStru,{"ID"    ,"C",06,0})
+aadd(aStru,{"NOME"  ,"C",50,0})
+aadd(aStru,{"ENDER" ,"C",50,0})
+aadd(aStru,{"COMPL" ,"C",20,0})
+aadd(aStru,{"BAIRR" ,"C",30,0})
+aadd(aStru,{"CIDADE","C",40,0})
+aadd(aStru,{"UF"    ,"C",02,0})
+aadd(aStru,{"CEP"   ,"C",08,0})
+
+// Novos campos inseridos em 07/10
+aadd(aStru,{"FONE1" ,"C",20,0})
+aadd(aStru,{"FONE2" ,"C",20,0})
+aadd(aStru,{"EMAIL" ,"C",40,0})
+
+If !TCCanOpen(cFile)
 	
 	// Se o arquivo nao existe no banco, cria
-	
-	aadd(aStru,{"ID"    ,"C",06,0})
-	aadd(aStru,{"NOME"  ,"C",50,0})
-	aadd(aStru,{"ENDER" ,"C",50,0})
-	aadd(aStru,{"COMPL" ,"C",20,0})
-	aadd(aStru,{"BAIRR" ,"C",30,0})
-	aadd(aStru,{"CIDADE","C",40,0})
-	aadd(aStru,{"UF"    ,"C",02,0})
-	aadd(aStru,{"CEP"   ,"C",08,0})
-	
 	DBCreate(cFile,aStru,"TOPCONN")
+	
+Else
+
+	// O Arquivo já existe, vamos comparar as estruturas
+	USE (cFile) ALIAS (cFile) SHARED NEW VIA "TOPCONN"
+	IF NetErr()
+		MsgSTop("Falha ao abrir a Agenda em modo compartilhado. Tente novamente mais tarde.")
+		QUIT
+	Endif
+	aDbStru := DBStruct()
+	USE
+	
+	If len(aDbStru) <> len(aStru)
+		// O tamanho está diferente ? 
+		// Vamos alterar a estrutura da tabela
+		// informamos a estrutura atual, e a estrutura esperada
+		If !TCAlter(cFile,aDbStru,aStru)
+			MsgSTop(tcsqlerror(),"Falha ao alterar a estrutura da AGENDA")
+			QUIT
+		Endif
+		MsgInfo("Estrutura do arquivo AGENDA atualizada.")
+	Endif
 	
 Endif
 
-If !tccanopen(cFile,cFile+'1')
+If !TCCanOpen(cFile,cFile+'_UNQ')
+	// Se o Indice único da tabela nao existe, cria 
+	USE (cFile) ALIAS (cFile) EXCLUSIVE NEW VIA "TOPCONN"
+	IF NetErr()
+		MsgSTop("Falha ao abrir a Agenda em modo EXCLUSIVO. Tente novamente mais tarde.")
+		QUIT
+	Endif
+	nRet := TCUnique(cFile,"ID")
+	If nRet < 0 
+		MsgSTop(tcsqlerror(),"Falha ao criar índice único")
+		QUIT
+	Endif
+	USE
+EndIf
+
+If !TCCanOpen(cFile,cFile+'1')
 	// Se o Indice por ID nao existe, cria
 	USE (cFile) ALIAS (cFile) EXCLUSIVE NEW VIA "TOPCONN"
+	IF NetErr()
+		MsgSTop("Falha ao abrir a Agenda em modo EXCLUSIVO. Tente novamente mais tarde.")
+		QUIT
+	Endif
 	INDEX ON ID TO (cFile+'1')
 	USE
 EndIf
 
-If !tccanopen(cFile,cFile+'2')
+If !TCCanOpen(cFile,cFile+'2')
 	// Se o indice por nome nao existe, cria
 	USE (cFile) ALIAS (cFile) EXCLUSIVE NEW VIA "TOPCONN"
+	IF NetErr()
+		MsgSTop("Falha ao abrir a Agenda em modo EXCLUSIVO. Tente novamente mais tarde.")
+		QUIT
+	Endif
 	INDEX ON NOME TO (cFile+'2')
 	USE
 EndIf
 
 // Abra o arquivo de agenda em modo compartilhado
-
 USE (cFile) ALIAS AGENDA SHARED NEW VIA "TOPCONN"
 
 If NetErr()
-	MsgStop("Falha ao Abrir a Agenda em modo compartilhado.")
+	MsgSTop("Falha ao abrir a Agenda em modo compartilhado. Tente novamente mais tarde.")
 	QUIT
-	return .F. 
 Endif
 
 // Liga o filtro para ignorar registros deletados 
@@ -256,6 +374,9 @@ DbSetIndex(cFile+'1')
 DbSetIndex(cFile+'2')
 DbSetOrder(1)
 DbGoTop()
+
+// Solta o MUTEX 
+GlbNmUnlock("AGENDA_DB")
 
 Return .T.
 
@@ -314,27 +435,22 @@ Cria uma janela de diálogo para fazer as operações
 A função atual faz toda a manutenção e navegação da Agenda
 ------------------------------------------ */
 
-STATIC Function ManAgenda(oDlg,aBtns,aGets,nAction,nMode)
+STATIC Function ManAgenda(oDlg,aBtns,aGets,nAction,nMode,oSayOrd)
 Local nI , nT
 Local cNewId
 Local lVolta
 
 If nAction == 1
 	
-	// Inclusao
+	// Inicio da Inclusao -- Novo contato 
 	
 	// Limpa todos os valores de tela,
 	// habilitando os campos para edição
 	ClearGets(aGets , .T. )
-	
-	// Se eu vou incluir, pega o Ultimo ID e soma 1
-	DBSelectArea("AGENDA")
-	DbsetOrder(1)
-	DBGobottom()
-	
-	// Coloca o novo ID no primeiro GET
-	cNewId := StrZero( val(AGENDA->ID) + 1 , 6 )
-	EVAL( aGets[1][2]:bSetGet , cNewId )
+
+	// Release 1.1
+	// Nao abre o campo ID para edição 
+	// E nao gera o numero agora, somente na hora de gravar
 	aGets[1][2]:Disable()
 	
 	// Joga o foco para o nome
@@ -373,7 +489,7 @@ ElseIf nAction == 3
 	
 ElseIf nAction == 4
 	
-	// Consulta
+	// Entrou no modo de Consulta / Navegação
 	
 	DBSelectArea("AGENDA")
 	
@@ -383,9 +499,12 @@ ElseIf nAction == 4
 		Return .F.
 	Endif
 	
-	// Consulta em ordem alfabética, inicia no priemiro registro
+	// Consulta em ordem alfabética, inicia no primeiro registro
 	DbsetOrder(2)
 	DBGotop()
+	
+	// Atualiza texto com a ordem 
+	oSayOrd:SetText("Ordem .... "+ AGENDA->(IndexKey()))
 	
 	// Coloca os dados do registro na tela
 	ReadRecord(aGets)
@@ -399,9 +518,34 @@ ElseIf nAction == 5  // Confirma
 	IF nMode == 1
 		
 		// Confirmando uma inclusao
+
+		// Release 1.1
+		// Usa uma funcao para criar um novo ID para a Agenda
+		cNewID := GetNewID()
+
+		// Release 1.2
+		// Se o ID está vazio, nao foi possivel obter o Semaforo
+		// para a geração do ID -- Muitas operações de inserção concorentes
+				
+		While empty(cNewID)
+
+			If MsgInfo("Falha ao obter um novo ID para inclusão. Deseja tentar novamente ?")
+				cNewID := GetNewID()
+				LOOP
+			Endif   
+			
+			MsgStop("Não é possível incluir na agenda neste momento. Tente novamente mais tarde.")
+			Return
+			
+		Enddo
+
+		// Coloca o valor no GET 
+		EVAL( aGets[1][2]:bSetGet , cNewId )
 		
 		DBSelectArea("AGENDA")
-		DBAppend()   // Inicia uma inserção
+
+		// Inicia uma inserção
+		DBAppend()   
 		
 		// Coloca o valor dos GETs nos respectivos campos do Alias
 		PutRecord(aGets)
@@ -409,6 +553,12 @@ ElseIf nAction == 5  // Confirma
 		// Solta o lock pego automaticamente na inclusao
 		// fazendo o flush do registro
 		DBRUnlock()
+
+		// Volta para a ordem alfabética 		
+		dbsetorder(2)
+
+		// Atualiza texto com a ordem 
+		oSayOrd:SetText("Ordem .... "+ AGENDA->(IndexKey()))
 		
 		// Volta ao modo inicial
 		nMode := 0
@@ -453,9 +603,15 @@ ElseIf nAction == 5  // Confirma
 			// E tenta posicionar no registro anterior
 			DbSkip(-1)
 			
-			// Se nao tem mais registros visiveis, volta ao estado inicial
+			If BOF()
+			    // Se já estava no primeiro registro, 
+			    // volta para o topo do arquivo 
+				DbGoTOP()			
+			Endif
+
 			If BOF() .and. EOF()
 				                              
+				// Se nao tem mais registros visiveis, volta ao estado inicial
 				MsgStop("Não há mais registros para visualização")
 				
 				// Volta ao modo inicial
@@ -463,7 +619,10 @@ ElseIf nAction == 5  // Confirma
 				AdjustMode(oDlg,aBtns,aGets,nMode)
 				
 			Else
-				
+			
+				// Coloca os dados do registro atual na tela
+				ReadRecord(aGets)
+
 				// Retorna ao modo de consulta
 				nMode := 4
 				AdjustMode(oDlg,aBtns,aGets,nMode)
@@ -513,6 +672,11 @@ ElseIf nAction == 6  // Voltar / Abandonar operação atual
 			
 			// Se eu estava fazendo uma alteração ou exclusão,
 			// eu devo voltar para o modo de consulta
+			
+			// Release 1.1
+			// Atualiza os dados do registro atual na tela
+			ReadRecord(aGets)
+
 			nMode := 4
 			AdjustMode(oDlg,aBtns,aGets,nMode)
 			
@@ -523,7 +687,7 @@ ElseIf nAction == 6  // Voltar / Abandonar operação atual
 			AdjustMode(oDlg,aBtns,aGets,nMode)
 			
 		Endif
-		
+
 	Endif
 	
 ElseIf nAction == 7  // Consulta - Primeiro Registro
@@ -573,6 +737,23 @@ ElseIf nAction == 10  // Consulta - Últmio  Registro
 	// Coloca na tela o conteudo do registro atual
 	ReadRecord(aGets)
 	
+ElseIf nAction == 11  // Pesquisa Indexada
+
+	// Realiza a busca 
+	PesqIndeX(oDlg)
+
+	// Atualiza na tela o conteudo do registro atual 
+	ReadRecord(aGets)
+	
+ElseIf nAction == 12  // Troca de Ordem
+
+	IF ChangeOrd(oDlg)
+		// Se a ordem foi trocada 
+		// Atualiza texto com a chave do indice em uso 
+		oSayOrd:SetText("Ordem .... "+ AGENDA->(IndexKey()))
+    Endif
+    
+
 Else
 	
 	UserException("Unexpected Action "+cValToChaR(nAction))
@@ -617,26 +798,15 @@ For nI := 1 to len(aGets)
 Next
 Return
 
-
 // -------------------------------------------------
 // Habilita ou desabilita os notões de navegação
 // -------------------------------------------------
-
 STATIC Function SetNavBtn(aBtns,lEnable)
 
-IF lEnable
-	aBtns[7]:Show()  // Primeiro
-	aBtns[8]:Show()  // Anterior
-	aBtns[9]:Show()  // Proximo
-	aBtns[10]:Show() // Ultimo
-Else
-	aBtns[7]:Hide()  // Primeiro
-	aBtns[8]:Hide()  // Anterior
-	aBtns[9]:Hide()  // Proximo
-	aBtns[10]:Hide() // Ultimo
-Endif
-
+Local oPanel := aBtns[7]:oParent
+oPanel:SEtEnable(lEnable)
 Return
+
 
 // -------------------------------------------------
 // Desabilita os botoes de todas as operações
@@ -685,7 +855,7 @@ ElseIf nMode == 1
 	
 	// Ajusta botoes baseado no modo atual ( Inclusao )
 	// Desliga todas as operaçòes
-	DisableOPs(aBtns)
+	DisableOPs(aBtns)          
 	
 	// Mostra Confirmar e Voltar
 	aBtns[5]:Show() // Confirmar
@@ -715,7 +885,10 @@ ElseIF  nMode == 3
 	oDlg:CTITLE("CRUD - Agenda (Exclusão)")
 	
 	// Ajusta botoes baseado no modo atual ( Exclusão )
-	
+
+	// Desliga a edição dos GETS	
+	EnableGets(aGets,.F.)
+
 	// Desliga todas as operaçòes
 	DisableOPs(aBtns)
 	
@@ -732,6 +905,8 @@ ElseIF  nMode == 4
 	
 	// Ajusta botoes baseado no modo atual ( Consulta )
 	
+	// Desliga a edição dos GETS	
+	EnableGets(aGets,.F.)
 	aBtns[1]:Enable() // Inclusao
 	aBtns[2]:Enable() // Alteracao
 	aBtns[3]:Enable() // Exclusao
@@ -747,4 +922,138 @@ ElseIF  nMode == 4
 Endif
 
 Return
+
+
+// Release 1.2
+// Usar cache em memória para gerar a sequencia
+
+STATIC Function GetNewID()
+Local cLastID,cNewId
+Local nRetry := 0
+While !GlbNmLock("AGENDA_ID")
+	// Espera máxima de 1 segundo, 20 tentativas
+	// com intervalos de 50 milissegundos
+	nRetry++
+	If nRetry > 20
+		return ""
+	Endif
+	Sleep(50)
+Enddo
+cLastID := GetGlbValue("AGENDA_SEQ")
+If Empty(cLastID)
+	// Somente busco na Tabela se eu nao tenho o valor na memoria
+	DBSelectArea("AGENDA")
+	DbsetOrder(1)
+	DBGobottom()
+	cLastId := AGENDA->ID
+Endif
+cNewId := StrZero( val(cLastID) + 1 , 6 )
+PutGlbValue("AGENDA_SEQ",cNewID)
+GlbNmUnlock("AGENDA_ID")
+Return cNewId
+
+
+// Release 1.1 
+// Exemplo de validação do campo cUF ( Estado ou Unidade da Federação ) 
+
+STATIC Function VldUf(cUF)
+If Empty(cUF)
+	// Estado nao informado / vazio / em branco 
+	Return .T.
+Endif
+If cUF $ "AC,AL,AP,AM,BA,CE,DF,ES,GO,MA,MT,MS,MG,PA,PB,PR,PE,PI,RJ,RN,RS,RO,RR,SC,SP,SE,TO"
+	// Estado digitado está na lista ? Beleza
+	Return .T.
+Endif          
+
+// Chegou até aqui ? O estado informado não é válido. 
+// Mostra a mensagem e retorna .F., nao permitindo 
+// que o foco seja removido do campo 
+MsgSTop("Unidade da Federação inválida ou esconhecida : ["+cUF+"] - "+;
+        "Informe um valor válido ou deixe este campo em branco.","Erro na Validação")
+
+Return .F.
+
+
+
+Static Function ChangeOrd(oDlg)
+Local nOrdAtu := AGENDA->(IndexOrd())
+Local nNewOrd := 0
+If nOrdAtu == 1 
+	If MsgYesNo("Deseja alterar para ordem de NOME ?")
+		nNewOrd := 2
+	Endif
+Else
+	If MsgYesNo("Deseja alterar para ordem de ID ?")
+		nNewOrd := 1
+	Endif
+Endif 
+
+if ( nNewOrd > 0 ) 
+	AGENDA->(DBSETORDER(nNewOrd))
+Endif
+
+return nNewOrd > 0 
+
+
+STATIC Function PesqIndeX(oDlgParent)
+Local oDlgPesq 
+Local cTitle
+Local cStrBusca
+Local nTamanho
+Local nRecSave 
+Local lFound := .F.
+Local cIndexFld := AGENDA->(Indexkey())
+Local oGet1 , oBtn1
+
+// Monta titulo da janela de pesquisa
+cTitle := 'Pesquisa por '+ cIndexFld
+
+// Guarda numero do registro atual 
+nRecSave := AGENDA->(Recno())
+
+If indexord() == 1
+	nTamanho := 6
+	cStrBusca := space(nTamanho)
+	cPicture := "@9"
+ElseIf indexord() == 2
+	nTamanho := 50
+	cStrBusca := space(nTamanho)
+	cPicture := "@!"
+Endif
+
+DEFINE DIALOG oDlgPesq TITLE (cTitle) ;
+	FROM 0,0 TO 120,415 PIXEL;
+	OF oDlgParent ; 
+	COLOR CLR_BLACK, CLR_LIGHTGRAY 
+
+@ 05,05 GET oGet1 VAR cStrBusca   PICTURE (cPicture)   SIZE CALCSIZEGET(nTamanho) ,12 OF oDlgPesq PIXEL
+
+@ 25,05 BUTTON oBtn1 PROMPT "Buscar" SIZE 60,15 ;
+	ACTION IIF( SeekAgenda(cIndexFld,cStrBusca) , (lFound := .T. , oDlgPesq:End()) , oGet1:SetFocus() ) OF oDlgPesq PIXEL
+
+ACTIVATE DIALOG oDlgPesq CENTER
+
+If !lFound
+	// Nao achou, volta ao registro antes da busca 
+	AGENDA->(dbgoto(nRecSave))
+Endif
+
+Return 
+
+
+STATIC Function SeekAgenda(cIndexFld,cStrBusca)
+
+IF cIndexFld == 'ID'
+	cStrBusca := strzero(val(cStrBusca),6)
+ElseIF cIndexFld == 'NOME'
+	cStrBusca := alltrim(cStrBusca)
+Endif
+
+If !DbSeek(cStrBusca)
+	MsgStop("Informação não encontrada.","Busca por ["+cStrBusca+"]")
+	return .F.
+Endif
+
+return .T. 
 
