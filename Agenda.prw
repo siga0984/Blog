@@ -18,16 +18,15 @@ Release 1.1 em 05/10/2018
 
 Correção - Após cancelar uma alteração, atualiza os campos da tela 
            com o conteúdo original do registro
-           
 Melhoria - Cria Novo ID apenas na hora de gravar
-
 Melhoria - Inserir validação no campo UF, para permitir ou um valor em branco, ou 
            um valor válido
-                  
 Melhoria - Inserir campos FONE1, FONE2, e EMAIL
-
-
 Melhoria - Implementar busca indexada por ID e NOME
+
+Release 1.3
+
+Melhoria - Busca de CEP integrada
 
 ============================================================================= */
 
@@ -73,7 +72,7 @@ Local oBtn1,oBtn2,oBtn3,oBtn4,oBtn5,oBtn6
 Local oSay1,oSay2,oSay3,oSay4,oSay5,oSay6,oSay7,oSay8,oSay9,oSayA,oSayB
 Local oGet1,oGet2,oGet3,oGet4,oGet5,oGet6,oGet7,oGet8,oGet9,oGetA,oGetB
 Local oBtnFirst, oBtnPrev, oBtnNext, oBtnLast, oBtnPesq, oBtnOrd
-Local oSayOrd
+Local oSayOrd , oBtnCEP
 Local aGets := {}
 Local aBtns := {}
 Local nMode := 0
@@ -167,6 +166,14 @@ aadd(aBtns,oBtn4) // Botão de Consulta - Navegação
 @  95,60 GET oGet7 VAR cUF          PICTURE "!!"   SIZE CALCSIZEGET(2) ,12 VALID VldUf(cUF) OF oPanelCrud PIXEL
 @ 110,60 GET oGet8 VAR cCEP         PICTURE "@R 99999-999" SIZE CALCSIZEGET(9),12 OF oPanelCrud PIXEL
 
+// Habilita a busca de CEP com um botao do lado do GET
+// O Botcao somente está disponivel caso o oGet8 ( campo CEP )
+// estiver habilitado para edição 
+
+@ 110,110  BUTTON oBtnCEP PROMPT "Buscar CEP" SIZE 60,14 ;
+    WHEN (oGet8:LACTIVE) ; 
+	ACTION BuscaCEP(oDlg,aBtns,aGets)  OF oPanelCrud PIXEL
+
 // Novos campos inseridos em 07/10
 @ 125,60 GET oGet9 VAR cFone1       PICTURE "@!" SIZE CALCSIZEGET(20),12 OF oPanelCrud PIXEL
 @ 140,60 GET oGetA VAR cFone2       PICTURE "@!" SIZE CALCSIZEGET(20),12 OF oPanelCrud PIXEL
@@ -192,30 +199,30 @@ aadd( aGets , {"EMAIL"  , oGetB , space(40)  } )
 
 // Cria os Botões de Ação sobre os dados
 @ 175,60  BUTTON oBtnConf PROMPT "Confirmar" SIZE 60,15 ;
-	ACTION ManAgenda(oDlg,aBtns,aGets,5,@nMode)  OF oPanelCrud PIXEL
+	ACTION ManAgenda(oDlg,aBtns,aGets,5,@nMode,oSayOrd)  OF oPanelCrud PIXEL
 
 aadd(aBtns,oBtnConf) // [5] Botão de Confirmaçáo
 
 @ 175,125  BUTTON oBtnCanc PROMPT "Voltar" SIZE 60,15 ;
-	ACTION ManAgenda(oDlg,aBtns,aGets,6,@nMode)  OF oPanelCrud PIXEL
+	ACTION ManAgenda(oDlg,aBtns,aGets,6,@nMode,oSayOrd)  OF oPanelCrud PIXEL
 
 aadd(aBtns,oBtnCanc) // [6] Botão de Cancelamento
 
 // Cria os Botões de Navegação Livre
 @ 05,05  BUTTON oBtnFirst PROMPT "Primeiro" SIZE 60,15 ;
-	ACTION ManAgenda(oDlg,aBtns,aGets,7,@nMode)  OF oPanelNav PIXEL
+	ACTION ManAgenda(oDlg,aBtns,aGets,7,@nMode,oSayOrd)  OF oPanelNav PIXEL
 aadd(aBtns,oBtnFirst) // [7] Primeiro
 
 @ 020,05  BUTTON oBtnPrev PROMPT "Anterior" SIZE 60,15 ;
-	ACTION ManAgenda(oDlg,aBtns,aGets,8,@nMode)  OF oPanelNav PIXEL
+	ACTION ManAgenda(oDlg,aBtns,aGets,8,@nMode,oSayOrd)  OF oPanelNav PIXEL
 aadd(aBtns,oBtnPrev) // [8] Anterior
 
 @ 35,05  BUTTON oBtnNext PROMPT "Próximo" SIZE 60,15 ;
-	ACTION ManAgenda(oDlg,aBtns,aGets,9,@nMode)  OF oPanelNav PIXEL
+	ACTION ManAgenda(oDlg,aBtns,aGets,9,@nMode,oSayOrd)  OF oPanelNav PIXEL
 aadd(aBtns,oBtnNext) // [9] Proximo
 
 @ 50,05  BUTTON oBtnLast PROMPT "Último" SIZE 60,15 ;
-	ACTION ManAgenda(oDlg,aBtns,aGets,10,@nMode)  OF oPanelNav PIXEL
+	ACTION ManAgenda(oDlg,aBtns,aGets,10,@nMode,oSayOrd)  OF oPanelNav PIXEL
 aadd(aBtns,oBtnLast) // [10] Último
 
 @ 65,05  BUTTON oBtnPesq PROMPT "Pesquisa" SIZE 60,15 ;
@@ -1056,4 +1063,144 @@ If !DbSeek(cStrBusca)
 Endif
 
 return .T. 
+
+
+/* ---------------------------------------------------
+Botcao para busca de CEP e preenchimento de campos 
+de endereço automaticamente. 
+--------------------------------------------------- */
+
+Static Function BuscaCEP(oDlg,aBtns,aGets)
+
+Local nPos , cCEP
+Local cJsonCEP
+Local oJsonObj
+Local aJsonFields := {}
+Local nRetParser := 0
+Local oJHashMap
+Local lOk
+Local cCEPEnder  := ''
+Local cCEPBairro := ''
+Local cCepCidade := ''
+Local cCEPUF     := ''
+Local lCEPERRO   := .F.
+
+// Busca o campo CEP nos Gets e recupera o valor informado
+nPos := ascan(aGets , {|x| x[1] == "CEP" } )
+cCep := Eval(aGets[nPos][2]:bSetGet)
+cCep := alltrim(cCep)
+
+// Verifica se o valor informado está completo - 8 digitos
+IF len(cCEp)  < 8
+	MsgStop("Digite o número do CEP completo para a busca.","CEP Inválido ou incompleto")
+	Return
+Endif
+
+// Busca o CEP usando uma API WEB
+// Em caso de sucesso, a API retorna um JSON
+// Em caso de falha, uam string vazia
+cJsonCEP := WebGetCep(cCEP)
+
+If !empty(cJsonCEP)
+	
+	// Caso o CEP tenha sido encontrado, chama o parser JSON
+	
+	oJsonObj := tJsonParser():New()
+	
+	// Faz o Parser da mensagem JSon e extrai para Array (aJsonfields)
+	// e cria tambem um HashMap para os dados da mensagem (oJHM)
+	lOk := oJsonObj:Json_Hash(cJsonCEP, len(cJsonCEP), @aJsonfields, @nRetParser, @oJHashMap)
+	
+	
+	If ( !Lok  )
+		
+		MsgStop(cJsonCEP,"Falha ao identificar CEP",cCEP)
+		
+	Else
+		
+		// Obtem o valor dos campos usando a chave
+		HMGet(oJHashMap, "erro", lCEPERRO)
+		
+		if lCEPERRO
+			
+			MsgStop("CEP Inexistente na Base de Dados","Falha ao buscar CEP "+cCEP)
+			
+		Else
+			
+			
+			HMGet(oJHashMap, "logradouro", cCEPEnder)
+			HMGet(oJHashMap, "bairro", cCEPBairro)
+			HMGet(oJHashMap, "localidade", cCepCidade)
+			HMGet(oJHashMap, "uf", cCEPUF)
+			
+			cCEPEnder  := padr(upper(cCEPEnder) ,50)
+			cCEPBairro := padr(upper(cCEPBairro),30)
+			cCepCidade := padr(upper(cCepCidade),40)
+			cCEPUF     := padr(Upper(cCEPUF)    ,2)
+			
+			IF MsgYesNo("Endereço ... "+cCEPEnder + chr(10) + ;
+				"Bairro ..... "+cCEPBairro + chr(10) + ;
+				"Cidade ..... "+cCEPCidade+ chr(10) + ;
+				"Estado ..... "+cCepUF+ chr(10) + ;
+				"Deseja atualizar o formulário com estes dados?","CEP encontrado")
+				
+				nPos := ascan(aGets , {|x| x[1] == "ENDER" } )
+				Eval(aGets[nPos][2]:bSetGet , cCEPEnder )
+				
+				nPos := ascan(aGets , {|x| x[1] == "BAIRR" } )
+				Eval(aGets[nPos][2]:bSetGet , cCEPBAirro )
+				
+				nPos := ascan(aGets , {|x| x[1] == "CIDADE" } )
+				Eval(aGets[nPos][2]:bSetGet , cCepCidade )
+				
+				nPos := ascan(aGets , {|x| x[1] == "UF" } )
+				Eval(aGets[nPos][2]:bSetGet , cCepUF )
+				
+			Endif
+			
+		Endif
+		
+	Endif
+	
+	FreeObj(oJsonObj)
+	FreeObj(oJHashMap)
+	
+Endif
+
+Return
+
+/* ---------------------------------------------------
+Busca na WEB o CEP Informado 
+Usa API en JSON oferecida pelo site viacep.com.br
+Retorno da API  : 
+ 
+{
+  "cep": "06709-300",
+  "logradouro": "Estrada Aldeia",
+  "complemento": "",
+  "bairro": "Granja Viana",
+  "localidade": "Cotia",
+  "uf": "SP",
+  "unidade": "",
+  "ibge": "3513009",
+  "gia": "2781"
+}
+
+--------------------------------------------------- */
+
+STATIC Function WebGetCep(cCEP)
+Local cUrl  , cJsonRet
+Local nCode , cMsg := ''
+// Montando a URL de pesquisa
+cUrl := 'http://viacep.com.br/ws/'+cCEP+'/json/'
+// Buscando o CEP
+cJsonRet := httpget(cUrl)
+// Verificando retorno 
+If empty(cJsonRet)
+	nCode := HTTPGETSTATUS(@cMsg)
+	MsgStop(cMsg+" ( HTTP STATUS = "+cValToChar(nCode)+" )","Falha na Busca de CEP")
+Endif
+Return cJsonRet
+
+              
 
