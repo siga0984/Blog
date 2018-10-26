@@ -27,6 +27,10 @@ Melhoria - Implementar busca indexada por ID e NOME
 Release 1.3
 
 Melhoria - Busca de CEP integrada
+Melhoria - Mostrar Mapa
+Melhoria - Enviar e-Mail 
+
+Release 1.4 - Foto 3x4
 
 ============================================================================= */
 
@@ -56,8 +60,8 @@ ACTIVATE DIALOG oDlg CENTER ;
 	ON INIT MsgRun("Aguarde...","Iniciando AGENDA", {|| DoInit(oDlg) }) ;
 	VALID CanQuit()
 
-// Fecha contexto da Agenda
-CloseAgenda()
+// Fecha contexto de dados
+CloseDB()
 
 return
 
@@ -72,10 +76,13 @@ Local oBtn1,oBtn2,oBtn3,oBtn4,oBtn5,oBtn6
 Local oSay1,oSay2,oSay3,oSay4,oSay5,oSay6,oSay7,oSay8,oSay9,oSayA,oSayB
 Local oGet1,oGet2,oGet3,oGet4,oGet5,oGet6,oGet7,oGet8,oGet9,oGetA,oGetB
 Local oBtnFirst, oBtnPrev, oBtnNext, oBtnLast, oBtnPesq, oBtnOrd
-Local oSayOrd , oBtnCEP
+Local oBtnMap, oBtnMail, oBtnImg
+Local oSayOrd , oBtnCEP, oBmpFoto
 Local aGets := {}
 Local aBtns := {}
 Local nMode := 0
+Local cImgDefault := "\temp\tmp_photo_3x4.img"
+Local nH
 
 Local cID      := Space(6)
 Local cNome    := Space(50)
@@ -91,10 +98,17 @@ Local cEmail   := Space(40)
 
 CursorArrow() ; CursorWait()
 
+// Abra conexao com banco de dados 
+OpenDB()
+
 // Abre contexto de dados da agenda
-If !OpenAgenda()
-	oDlg:End()
-	Return .F.
+OpenAgenda()
+
+// Cria a imagem padrao da agenda 3x4
+if !file(cImgDefault)
+	nH := fCreate(cImgDefault)
+	fWrite(nH,RAW3x4())
+	fclose(nH)
 Endif
 
 @ 0,0 MSPANEL oPanelMenu OF oDlg SIZE 70,600 COLOR CLR_WHITE,CLR_GRAY
@@ -120,23 +134,29 @@ oSayOrd:SetText("Ordem .... "+ AGENDA->(IndexKey()))
 // Cria os botões no Painel Lateral ( Menu )
 
 @ 05,05  BUTTON oBtn1 PROMPT "Incluir" SIZE 60,15 ;
-	ACTION ManAgenda(oDlg,aBtns,aGets,1,@nMode,oSayOrd) OF oPanelMenu PIXEL
+	ACTION ManAgenda(oDlg,aBtns,aGets,1,@nMode,oSayOrd,oBmpFoto) OF oPanelMenu PIXEL
 aadd(aBtns,oBtn1) // Botcao de Inclusao
 
 @ 20,05  BUTTON oBtn2 PROMPT "Alterar" SIZE 60,15 ;
-	ACTION ManAgenda(oDlg,aBtns,aGets,2,@nMode,oSayOrd) OF oPanelMenu PIXEL
+	ACTION ManAgenda(oDlg,aBtns,aGets,2,@nMode,oSayOrd,oBmpFoto) OF oPanelMenu PIXEL
 aadd(aBtns,oBtn2) // Botao de alteração
 
 @ 35,05  BUTTON oBtn3 PROMPT "Excluir" SIZE 60,15 ;
-	ACTION ManAgenda(oDlg,aBtns,aGets,3,@nMode,oSayOrd) OF oPanelMenu PIXEL
+	ACTION ManAgenda(oDlg,aBtns,aGets,3,@nMode,oSayOrd,oBmpFoto) OF oPanelMenu PIXEL
 aadd(aBtns,oBtn3) // Botão de exclusão
 
 @ 50,05  BUTTON oBtn4 PROMPT "Consultar" SIZE 60,15 ;
-	ACTION ManAgenda(oDlg,aBtns,aGets,4,@nMode,oSayOrd) OF oPanelMenu PIXEL
+	ACTION ManAgenda(oDlg,aBtns,aGets,4,@nMode,oSayOrd,oBmpFoto) OF oPanelMenu PIXEL
 aadd(aBtns,oBtn4) // Botão de Consulta - Navegação
 
 @ 65,05  BUTTON oBtn5 PROMPT "Sair" SIZE 60,15 ;
 	ACTION oDlg:End() OF oPanelMenu PIXEL
+
+@ 90,05 BITMAP oBmpFoto OF oPanelMenu PIXEL 
+  
+oBmpFoto:nWidth := 120
+oBmpFoto:nHeight := 160
+oBmpFoto:lStretch := .T.
 
 // -----------------------------------------------------------------------------
 // Desenha os componentes a partir do Painel de Manutenção
@@ -199,39 +219,53 @@ aadd( aGets , {"EMAIL"  , oGetB , space(40)  } )
 
 // Cria os Botões de Ação sobre os dados
 @ 175,60  BUTTON oBtnConf PROMPT "Confirmar" SIZE 60,15 ;
-	ACTION ManAgenda(oDlg,aBtns,aGets,5,@nMode,oSayOrd)  OF oPanelCrud PIXEL
+	ACTION ManAgenda(oDlg,aBtns,aGets,5,@nMode,oSayOrd,oBmpFoto)  OF oPanelCrud PIXEL
 
 aadd(aBtns,oBtnConf) // [5] Botão de Confirmaçáo
 
 @ 175,125  BUTTON oBtnCanc PROMPT "Voltar" SIZE 60,15 ;
-	ACTION ManAgenda(oDlg,aBtns,aGets,6,@nMode,oSayOrd)  OF oPanelCrud PIXEL
+	ACTION ManAgenda(oDlg,aBtns,aGets,6,@nMode,oSayOrd,oBmpFoto)  OF oPanelCrud PIXEL
 
 aadd(aBtns,oBtnCanc) // [6] Botão de Cancelamento
 
 // Cria os Botões de Navegação Livre
 @ 05,05  BUTTON oBtnFirst PROMPT "Primeiro" SIZE 60,15 ;
-	ACTION ManAgenda(oDlg,aBtns,aGets,7,@nMode,oSayOrd)  OF oPanelNav PIXEL
+	ACTION ManAgenda(oDlg,aBtns,aGets,7,@nMode,oSayOrd,oBmpFoto)  OF oPanelNav PIXEL
 aadd(aBtns,oBtnFirst) // [7] Primeiro
 
 @ 020,05  BUTTON oBtnPrev PROMPT "Anterior" SIZE 60,15 ;
-	ACTION ManAgenda(oDlg,aBtns,aGets,8,@nMode,oSayOrd)  OF oPanelNav PIXEL
+	ACTION ManAgenda(oDlg,aBtns,aGets,8,@nMode,oSayOrd,oBmpFoto)  OF oPanelNav PIXEL
 aadd(aBtns,oBtnPrev) // [8] Anterior
 
 @ 35,05  BUTTON oBtnNext PROMPT "Próximo" SIZE 60,15 ;
-	ACTION ManAgenda(oDlg,aBtns,aGets,9,@nMode,oSayOrd)  OF oPanelNav PIXEL
+	ACTION ManAgenda(oDlg,aBtns,aGets,9,@nMode,oSayOrd,oBmpFoto)  OF oPanelNav PIXEL
 aadd(aBtns,oBtnNext) // [9] Proximo
 
 @ 50,05  BUTTON oBtnLast PROMPT "Último" SIZE 60,15 ;
-	ACTION ManAgenda(oDlg,aBtns,aGets,10,@nMode,oSayOrd)  OF oPanelNav PIXEL
+	ACTION ManAgenda(oDlg,aBtns,aGets,10,@nMode,oSayOrd,oBmpFoto)  OF oPanelNav PIXEL
 aadd(aBtns,oBtnLast) // [10] Último
 
 @ 65,05  BUTTON oBtnPesq PROMPT "Pesquisa" SIZE 60,15 ;
-	ACTION ManAgenda(oDlg,aBtns,aGets,11,@nMode,oSayOrd)  OF oPanelNav PIXEL
+	ACTION ManAgenda(oDlg,aBtns,aGets,11,@nMode,oSayOrd,oBmpFoto)  OF oPanelNav PIXEL
 aadd(aBtns,oBtnPesq) // [11] Pesquisa
 
 @ 80,05  BUTTON oBtnOrd PROMPT "Ordem" SIZE 60,15 ;
-	ACTION ManAgenda(oDlg,aBtns,aGets,12,@nMode,oSayOrd)  OF oPanelNav PIXEL
+	ACTION ManAgenda(oDlg,aBtns,aGets,12,@nMode,oSayOrd,oBmpFoto)  OF oPanelNav PIXEL
 aadd(aBtns,oBtnOrd) // [12] Ordem
+
+@ 95,05  BUTTON oBtnMap PROMPT "Mapa" SIZE 60,15 ;
+	ACTION ShowMap(oDlg,aBtns,aGets)  OF oPanelNav PIXEL
+aadd(aBtns,oBtnMap) // [13] Mapa
+
+@ 110,05  BUTTON oBtnMail PROMPT "G-Mail" SIZE 60,15 ;
+    WHEN !empty(cEMAIL) ; 
+	ACTION SendGMail(cEMAIL)  OF oPanelNav PIXEL
+aadd(aBtns,oBtnMail) // [14] e-Mail
+
+@ 125,05  BUTTON oBtnImg PROMPT "Foto 3x4" SIZE 60,15 ; 
+    WHEN ( nMode == 4  ) ; // Editar foro disponivel apenas durante a consulta
+	ACTION ChgImage(oDlg,aBtns,aGets,oBmpFoto)  OF oPanelNav PIXEL
+aadd(aBtns,oBtnImg) // [15] Foto 3x4
 
 // Seta a interface para o estado inicial
 // Habilita apenas inserção e consulta 
@@ -257,19 +291,10 @@ Return MsgYesNo("Deseja fechar a Agenda ?")
 // --------------------------------------------------------------
 
 STATIC Function OpenAgenda()
-Local nH
 Local cFile := "AGENDA"
 Local aStru := {}
 Local aDbStru := {}
 Local nRet
-
-// Conecta com o DBAccess configurado no ambiente
-nH := TCLink()
-
-If nH < 0
-	MsgStop("DBAccess - Erro de conexao "+cValToChar(nH))
-	QUIT
-Endif
 
 // Coloca um MUTEX na operação de criar/abrir o arquivo de Agenda
 // Assim apenas um processo por vez realiza a manutenção nas
@@ -283,7 +308,6 @@ While !GlbNmLock("AGENDA_DB")
 Enddo
 
 // Cria o array com os campos do arquivo 
-	
 aadd(aStru,{"ID"    ,"C",06,0})
 aadd(aStru,{"NOME"  ,"C",50,0})
 aadd(aStru,{"ENDER" ,"C",50,0})
@@ -297,6 +321,9 @@ aadd(aStru,{"CEP"   ,"C",08,0})
 aadd(aStru,{"FONE1" ,"C",20,0})
 aadd(aStru,{"FONE2" ,"C",20,0})
 aadd(aStru,{"EMAIL" ,"C",40,0})
+
+// Novos campos inseridos em 21/10
+aadd(aStru,{"IMAGE" ,"M",10,0})
 
 If !TCCanOpen(cFile)
 	
@@ -314,10 +341,10 @@ Else
 	aDbStru := DBStruct()
 	USE
 	
-	If len(aDbStru) <> len(aStru)
-		// O tamanho está diferente ? 
+	If len(aDbStru) != len(aStru)
+		// Estao faltando campos no banco ? 
 		// Vamos alterar a estrutura da tabela
-		// informamos a estrutura atual, e a estrutura esperada
+		// Informamos a estrutura atual, e a estrutura esperada
 		If !TCAlter(cFile,aDbStru,aStru)
 			MsgSTop(tcsqlerror(),"Falha ao alterar a estrutura da AGENDA")
 			QUIT
@@ -391,7 +418,7 @@ Return .T.
 // Funcao de encerramento do contexto de dados da Agenda
 // Fecha todos os alias abertos, encerra a conexão com o DBAccess
 
-STATIC Function CloseAgenda()
+STATIC Function CloseDB()
 
 DBCloseAll()   // Fecha todas as tabelas
 Tcunlink()     // Desconecta do DBAccess
@@ -442,7 +469,7 @@ Cria uma janela de diálogo para fazer as operações
 A função atual faz toda a manutenção e navegação da Agenda
 ------------------------------------------ */
 
-STATIC Function ManAgenda(oDlg,aBtns,aGets,nAction,nMode,oSayOrd)
+STATIC Function ManAgenda(oDlg,aBtns,aGets,nAction,nMode,oSayOrd,oBmpFoto)
 Local nI , nT
 Local cNewId
 Local lVolta
@@ -466,6 +493,7 @@ If nAction == 1
 	// Seta que o modo atual é Inclusao
 	nMode := 1
 	AdjustMode(oDlg,aBtns,aGets,nMode)
+
 	
 ElseIf nAction == 2
 	
@@ -484,6 +512,7 @@ ElseIf nAction == 2
 	// Seta que o modo atual é Alteração
 	nMode := 2
 	AdjustMode(oDlg,aBtns,aGets,nMode)
+
 	
 ElseIf nAction == 3
 	
@@ -515,6 +544,9 @@ ElseIf nAction == 4
 	
 	// Coloca os dados do registro na tela
 	ReadRecord(aGets)
+
+	// Mostra a imagem do contato 	
+	ShowImg(oBmpFoto)
 	
 	// Seta que o modo atual é Consulta
 	nMode := 4
@@ -630,6 +662,9 @@ ElseIf nAction == 5  // Confirma
 				// Coloca os dados do registro atual na tela
 				ReadRecord(aGets)
 
+				// Mostra a imagem do contato 	
+				ShowImg(oBmpFoto)
+				
 				// Retorna ao modo de consulta
 				nMode := 4
 				AdjustMode(oDlg,aBtns,aGets,nMode)
@@ -684,6 +719,9 @@ ElseIf nAction == 6  // Voltar / Abandonar operação atual
 			// Atualiza os dados do registro atual na tela
 			ReadRecord(aGets)
 
+			// Mostra a imagem do contato 	
+			ShowImg(oBmpFoto)
+
 			nMode := 4
 			AdjustMode(oDlg,aBtns,aGets,nMode)
 			
@@ -704,6 +742,9 @@ ElseIf nAction == 7  // Consulta - Primeiro Registro
 	
 	// Coloca na tela o conteudo do registro atual
 	ReadRecord(aGets)
+
+	// Mostra a imagem do contato 	
+	ShowImg(oBmpFoto)
 	
 ElseIf nAction == 8  // Consulta - Registro anterior
 	
@@ -714,8 +755,13 @@ ElseIf nAction == 8  // Consulta - Registro anterior
 		// Bateu no início do arquivo
 		MsgInfo("Não há registro anterior. Você está no primeiro registro da Agenda")
 	ELSE
+
 		// Coloca na tela o conteudo do registro atual
 		ReadRecord(aGets)
+
+		// Mostra a imagem do contato 	
+		ShowImg(oBmpFoto)
+
 	Endif
 	
 ElseIf nAction == 9  // Consulta - Próximo Registro
@@ -735,7 +781,10 @@ ElseIf nAction == 9  // Consulta - Próximo Registro
 	
 	// Coloca na tela o conteudo do registro atual
 	ReadRecord(aGets)
-	
+
+	// Mostra a imagem do contato 	
+	ShowImg(oBmpFoto)
+
 ElseIf nAction == 10  // Consulta - Últmio  Registro
 	
 	DbSelectArea("AGENDA")
@@ -744,6 +793,9 @@ ElseIf nAction == 10  // Consulta - Últmio  Registro
 	// Coloca na tela o conteudo do registro atual
 	ReadRecord(aGets)
 	
+	// Mostra a imagem do contato 	
+	ShowImg(oBmpFoto)
+
 ElseIf nAction == 11  // Pesquisa Indexada
 
 	// Realiza a busca 
@@ -752,6 +804,9 @@ ElseIf nAction == 11  // Pesquisa Indexada
 	// Atualiza na tela o conteudo do registro atual 
 	ReadRecord(aGets)
 	
+	// Mostra a imagem do contato 	
+	ShowImg(oBmpFoto)
+
 ElseIf nAction == 12  // Troca de Ordem
 
 	IF ChangeOrd(oDlg)
@@ -806,12 +861,15 @@ Next
 Return
 
 // -------------------------------------------------
-// Habilita ou desabilita os notões de navegação
+// Habilita ou desabilita os botões de navegação 
+// do painel de botões do lado direito 
+// -- Menos os botoes de e-Mail e Foto 3x4, que tem ativação condicional 
 // -------------------------------------------------
 STATIC Function SetNavBtn(aBtns,lEnable)
-
-Local oPanel := aBtns[7]:oParent
-oPanel:SEtEnable(lEnable)
+Local nI
+For nI := 7 to 13
+	aBtns[nI]:SetEnable(lEnable)
+Next
 Return
 
 
@@ -1031,6 +1089,7 @@ Endif
 
 DEFINE DIALOG oDlgPesq TITLE (cTitle) ;
 	FROM 0,0 TO 120,415 PIXEL;
+	FONT oDlgParent:oFont ;
 	OF oDlgParent ; 
 	COLOR CLR_BLACK, CLR_LIGHTGRAY 
 
@@ -1203,4 +1262,326 @@ Endif
 Return cJsonRet
 
               
+/* --------------------------------------------------------------------------
+Abre uma guia no navegador padrão da máquina onde está sendo executado 
+o SmartClient, com o mapa do Google Maps pesquisando o endereço 
+do contato atualmente em foco na tela da agenda.
+
+URL de Exemplo:
+https://www.google.com/maps/search/?api=1&query=Estrada da Aldeia,Cotia,SP,06709300
+-------------------------------------------------------------------------- */
+
+STATIC Function ShowMap(oDlg,aBtns,aGets)
+Local nPos
+Local cEndereco
+Local cCidade
+Local cUF
+Local cCEP
+Local cMapsURL := 'https://www.google.com/maps/search/?api=1&query='
+Local cUrlQry := ''
+
+nPos := ascan(aGets , {|x| x[1] == "ENDER" } )
+cEndereco := alltrim(Eval( aGets[nPos][2]:bSetGet ))
+If !empty(cEndereco)
+	cUrlQry += UrlEscape(cEndereco+',')
+Endif
+				
+nPos := ascan(aGets , {|x| x[1] == "CIDADE" } )
+cCidade := alltrim(Eval( aGets[nPos][2]:bSetGet ))
+If !empty(cCidade)
+	cUrlQry += UrlEscape(cCidade+',')
+Endif
+
+nPos := ascan(aGets , {|x| x[1] == "UF" } )
+cUF := Eval( aGets[nPos][2]:bSetGet )
+If !empty(cUF)
+	cUrlQry += UrlEscape(cUF+',')
+Endif
+
+nPos := ascan(aGets , {|x| x[1] == "CEP" } )
+cCep := alltrim(Eval( aGets[nPos][2]:bSetGet ))
+If !empty(cCidade)
+	cUrlQry += UrlEscape(cCEP)
+Endif
+          
+If Empty(cUrlQry)
+	MsgStop("Nao há dados preenchidos suficientes para a busca.")
+	Return
+Endif
+
+shellExecute("Open", cMapsURL+cUrlQry, "", "", 1 )
+
+Return
+
+/* -----------------------------------------------------------
+Funcao de Escape de caracteres básica para informar 
+valores de campos via URL 
+----------------------------------------------------------- */
+
+STATIC Function UrlEscape(cInfo)
+cInfo := strtran(cInfo,'%',"%25")
+cInfo := strtran(cInfo,'&',"%26")
+cInfo := strtran(cInfo," ","+")
+cInfo := strtran(cInfo,'"',"%22")
+cInfo := strtran(cInfo,'#',"%23")
+cInfo := strtran(cInfo,",","%2C")
+cInfo := strtran(cInfo,'<',"%3C")
+cInfo := strtran(cInfo,'>',"%3E")
+cInfo := strtran(cInfo,"|","%7C")
+Return cInfo
+
+
+/* --------------------------------------------------------------------
+Cria uma janela WEB com o componente TWebEngine() no Smartclient
+e abre uma janela no envio de e-mail do GMail
+Observação: É necessário ter uma conta no GMail 
+-------------------------------------------------------------------- */
+
+STATIC Function SendGMail(cEMAIL)
+Local cMailURL := 'https://mail.google.com/mail/?view=cm&fs=1&tf=1&to='
+Local oDlgMail
+Local oWebBrowse
+Local cTitle := "Enviar eMail ("+cEMAIL+")" 
+
+DEFINE DIALOG oDlgMail TITLE (cTitle) ;
+	FROM 0,0 TO 600,800 PIXEL
+
+oWebBrowse := TWebEngine():New(oDlgMail, 0, 0, 100, 100)
+oWebBrowse:Align := CONTROL_ALIGN_ALLCLIENT
+oWebBrowse:Navigate(cMailURL+lower(cEMAIL))
+
+ACTIVATE DIALOG oDlgMail CENTER 
+
+Return
+
+
+STATIC Function ShowImg(oBmpFoto)
+Local cTmpPath
+Local nH
+Local cRAWImage 
+Local cId 
+
+If !Agenda->(Eof())
+	cRAWImage := AGENDA->IMAGE
+	cId := AGENDA->ID
+Endif
+
+If empty(cRawImage)
+	
+	// Carrega a imagem default 
+	oBmpFoto:Load(,"\temp\tmp_photo_3x4.img")
+
+Else
+	
+	// Carrega a imagem do contato
+	// fazendo cache em disco na pasta TEMP 
+	
+	cTmpPath := "\temp\tmp_"
+	cTmpPath += cID
+	cTmpPath += ".img"
+	
+	if !file(cTmpPath)
+		nH := fCreate(cTmpPath)
+		fWrite(nH,cRawImage)
+		fclose(nH)
+	Endif
+	
+	oBmpFoto:Load(,cTmpPath)
+	
+Endif
+
+
+Return     
+
+
+STATIC Function OpenDB()
+
+// Conecta com o DBAccess configurado no ambiente
+nH := TCLink()
+
+If nH < 0
+	MsgStop("DBAccess - Erro de conexao "+cValToChar(nH))
+	QUIT
+Endif
+
+Return
+
+
+STATIC Function RAW3x4()
+Local cRaw := ''
+cRaw += HEx2Bin('89504E470D0A1A0A0000000D4948445200000078000000A00802000000486B3FC700000001735247')
+cRaw += HEx2Bin('4200AECE1CE90000000467414D410000B18F0BFC61050000000970485973000012740000127401DE')
+cRaw += HEx2Bin('661F78000003D749444154785EEDDC6D5AEA30140061F7D3F5B01FD7C37AD88F3760494E3E8A14CB')
+cRaw += HEx2Bin('542E33BF34C4206F43451FEAC79721090D253494D0504243090D253494D0504243090D253494D050')
+cRaw += HEx2Bin('4243090D253494D0504243090D253494D0504243090D253494D0504243090D253494D0504243090D')
+cRaw += HEx2Bin('253494D0504243090D253494D0504243090D253494D0504243090D253494D0504243ED097D3A1E3E')
+cRaw += HEx2Bin('BE9B3E4FF3D87FDB33A0B35F6C9AA6C3E7B1F23C7D4ED71B857EA0E2372A983E0DBA2C7C38CE43BB')
+cRaw += HEx2Bin('8743A7AE8F5EE8DF15A0F3E33C1DA3FE3C2CF4EF1A41A7C2F0EC5A43A71F8D53FEBC3D9DCF9DD201')
+cRaw += HEx2Bin('2BB352DF27FE3075F8F321558BFFBCCEE671D0C1A0874ECD1F96DADD980EC47C4BD794E72E4187E7')
+cRaw += HEx2Bin('CC5DEB6CDEDFD8D1E302CE8F73AF77F5D38EBE779DCDC3CED1611B5D01EB079DF50B55910E7E69D7')
+cRaw += HEx2Bin('5D4787ABA6CAC22DDBBA75B6ECB9D0C38A7E99181F5D19CEA3DD5927375C63117AE53A5B4643C747')
+cRaw += HEx2Bin('31103DD70F2F4CBC14EE6D70046BE8B5EB6C19053DF8C570E971F7C36523F60623A03256CF5FBBCE')
+cRaw += HEx2Bin('96713F0CFB7AD14BFDF0F2337EBC48195B82BE6F9D2D7B09E8B062AB30BCB332587F036BD7D9B297')
+cRaw += HEx2Bin('808E4BA6C1F1AB85705FD57770993CFF2EB2729D2D7B0DE8F8AC1F57EFD07EF6F5F675EB6CD8AB40')
+cRaw += HEx2Bin('9F89F2B26DFD2F749D67596AD53ADBF554E8F4EC9CC786A5676C9E18F7D1C270FA82157FA2389F0E')
+cRaw += HEx2Bin('F2CC342D4EDAE14F1DCF80B6514243090D253494D0504243090D253494D0504243090D253494D050')
+cRaw += HEx2Bin('4243090D253494D0504243090D253494D0504243090D253494D0504243090D253494D0504243ED07')
+cRaw += HEx2Bin('7D7EEBECA1BA6276703DD123D56F806EDFFABB573B41DF7AE3FDEFDE0DDEAEFCDED0E1A280518F53')
+cRaw += HEx2Bin('F70750E874A2086FB2AFE91F940E970AE40B9DDFFCD43128525FA1CB068D97979499D501A98683B9')
+cRaw += HEx2Bin('D07501BAE08C06C7868DBED0C3D22B900CDAECD3B2A9E7F13C10A7759B5CE85CD8ACA1E6FAA954BD')
+cRaw += HEx2Bin('A9F36711B04CC9A342E746D0E357D26153E7E2761EA10A9D1BEFE84B1D4E4B1D270CF7B8D00B9DAA')
+cRaw += HEx2Bin('CBB17B9E463AECE71BC72BB43FF71F81BE14352B991EB3DC2CF4FA16A00365F8D348DED4ED6965D8')
+cRaw += HEx2Bin('9B429FE99AABAFD3CB8978EE08300532D946F49B76F9ABF627FE6E37E89B957370993A8B850D1C5F')
+cRaw += HEx2Bin('79B4097DE9E6D33DD084239255EFDBD442CFCDFFC921EEECFE7F3994E311B9EE9216FA5D131A4A68')
+cRaw += HEx2Bin('28A1A18486121A4A6828A1A18486121A4A6828A1A18486121A4A6828A1A18486121A4A6828A1A184')
+cRaw += HEx2Bin('86121A4A6828A1A18486121A4A6828A1A18486121A4A6828A1A18486121A4A6828A1A18486121A4A')
+cRaw += HEx2Bin('6828A1A18486121A4A6828A1A18486121A4A6828A1A18486121AE9EBEB1FDCCEA468FA802AA60000')
+cRaw += HEx2Bin('000049454E44AE426082')
+
+Return cRaw
+
+
+
+STATIC function HEx2Bin(cHex)
+Local cBin := ''
+For nI := 1 to len(cHex) STEP 2
+	cBin += chr(__HEXTODEC(substr(cHex,nI,2)))
+Next
+Return cBin
+
+
+STATIC Function ChgImage(oDlg,aBtns,aGets,oBmpFoto)
+Local cTitle := 'Escolha uma imagem'
+Local oDlgImg
+Local cFile := space(40)
+Local lOk := .F.
+Local aFInfo
+
+DEFINE DIALOG oDlgImg TITLE (cTitle) ;
+	FROM 0,0 TO 120,415 PIXEL;
+	FONT oDlg:oFont ;
+	OF oDlg ; 
+	COLOR CLR_BLACK, CLR_HBLUE
+
+@ 05,05 GET oGet1 VAR cFile  SIZE CALCSIZEGET(40),12 OF oDlgImg PIXEL
+
+@ 25,05 BUTTON oBtn1 PROMPT "Buscar" SIZE 60,15 ;
+	ACTION (BuscaFile(@cFile)) OF oDlgImg PIXEL
+
+@ 25,85 BUTTON oBtn2 PROMPT "Ok" SIZE 60,15 ;
+    WHEN File(alltrim(cFile)) ; 
+	ACTION ( lOk := .T. , oDlgImg:End() ) OF oDlgImg PIXEL
+
+ACTIVATE DIALOG oDlgImg CENTER
+
+IF lOk
+
+	cFile := alltrim(cFile)
+	aFInfo := Directory(cFile)
+	If len(aFInfo) > 0 
+		If aFInfo[1][2] > ( 128 * 1024) // Até 128 KB
+			MsgStop("Arquivo muito grande ("+str(aFInfo[1][2]/2014,8,2)+" KB)","Imagem maior que 128 KB")
+			return 
+		Endif
+	Else
+		MsgStop('Arquivo não encontrado',cFile)
+		return 
+	Endif
+
+	// Chegou ate aqui, atualiza o campo memo 
+	
+	cMemoImg := AGENDA->IMAGE
+	
+	If !empty(cMemoImg)
+		lOk := MsgYEsNo("Este contato já tem uma foto. Deseja substituí-la ?")
+	Endif
+
+	If lOk
+
+		// Lê a imagem do disco 			                         
+		cMemoImg := ReadFile(cFile)
+		
+		If empty(cMemoImg)
+			Return
+		Endif
+
+		DBSelectArea("AGENDA")
+
+		If DbrLock(recno())
+
+			AGENDA->IMAGE := cMemoImg
+
+			DBRUnlock()
+			
+			MsgInfo("Imagem atualizada.")
+
+			// Limpa ultima imagem desse ID do cache temporário 			
+			CleanImg(AGENDA->ID)
+
+			// Carrega a imagem default para limpar 
+			// o cache do componente de imagem 
+			oBmpFoto:Load(,"\temp\tmp_photo_3x4.img")
+
+			// Agora Mostra a nova imagem do contato 	
+			ShowImg(oBmpFoto)
+
+		Else
+			
+			// Nao conseguiu bloqueio do registro
+			// Mostra a mensagem e permanece no modo de alteração
+			MsgStop("Registro não pode ser alterado, está sendo usado por outro usuário")
+			
+		Endif
+		
+	Endif
+
+Endif
+
+Return
+
+
+STATIC Function BuscaFile(cFile)
+Local cRet
+
+cRet := cGetFile( 'Imagens PNG|*.png|Imagens JPEG|*.jpg|Imagens BITMAP|*.bmp' , ;
+       'Imagens', 1, 'C:\', .F., 1  ,.T., .T. )
+
+If !empty(cRet) 
+	cFile := padr(cRet,len(cFile))
+Endif
+
+return 
+
+
+STATIC Function ReadFile(cFile)
+Local cBuffer := ''
+Local nH , nTam
+nH := Fopen(cFile)
+IF nH != -1
+	nTam := fSeek(nH,0,2)
+	fSeek(nH,0)
+	cBuffer := space(nTam)
+	fRead(nH,@cBuffer,nTam)
+	fClose(nH)
+Else
+	MsgStop("Falha na abertura do arquivo ["+cFile+"]","FERROR "+cValToChar(Ferror()))
+Endif
+Return cBuffer
+
+
+STATIC Function ShowObj(oObj)
+Local aInfo := ClassDataArr(oObj,.T.)
+Local ni
+For nI := 1 to len(aInfo)
+	conout(aInfo[nI][1]+' = '+cValToChar(aInfo[nI][2]))
+Next
+Return
+
+STATIC Function CleanImg(cID)
+Local cTmpPath
+cTmpPath := "\temp\tmp_"
+cTmpPath += cID
+cTmpPath += ".img"
+ferase(cTmpPath)
+return
 
