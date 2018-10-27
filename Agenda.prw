@@ -1453,29 +1453,57 @@ Return cBin
 STATIC Function ChgImage(oDlg,aBtns,aGets,oBmpFoto)
 Local cTitle := 'Escolha uma imagem'
 Local oDlgImg
-Local cFile := space(40)
-Local lOk := .F.
+Local cFile := space(50)
+Local lOk := .F. , lErase := .F.
 Local aFInfo
+Local oGet1, oBtn1, oBtn2, oBtn3
+Local cMemoImg := AGENDA->IMAGE
 
 DEFINE DIALOG oDlgImg TITLE (cTitle) ;
-	FROM 0,0 TO 120,415 PIXEL;
-	FONT oDlg:oFont ;
+	FROM 0,0 TO 120,425 PIXEL;
+	FONT oDlg:oFont ; 			// Usa a mesma fonte do diálogo anterior 
 	OF oDlg ; 
 	COLOR CLR_BLACK, CLR_HBLUE
 
-@ 05,05 GET oGet1 VAR cFile  SIZE CALCSIZEGET(40),12 OF oDlgImg PIXEL
+@ 05,05 GET oGet1 VAR cFile  SIZE CALCSIZEGET(50),12 OF oDlgImg PIXEL
 
 @ 25,05 BUTTON oBtn1 PROMPT "Buscar" SIZE 60,15 ;
 	ACTION (BuscaFile(@cFile)) OF oDlgImg PIXEL
 
-@ 25,85 BUTTON oBtn2 PROMPT "Ok" SIZE 60,15 ;
+@ 25,70 BUTTON oBtn2 PROMPT "Ok" SIZE 60,15 ;
     WHEN File(alltrim(cFile)) ; 
 	ACTION ( lOk := .T. , oDlgImg:End() ) OF oDlgImg PIXEL
 
+@ 25,135 BUTTON oBtn3 PROMPT "Apagar" SIZE 60,15 ;
+	ACTION ( lErase := .T. , oDlgImg:End() ) OF oDlgImg PIXEL
+
+if Empty(cMemoImg)
+	// Se o contato nao tem foto, não mostra o
+	// botão para apagar a foto 
+	oBtn3:Hide()
+Endif
+
 ACTIVATE DIALOG oDlgImg CENTER
 
-IF lOk
-
+If lErase
+	If MsgYEsNo("Este contato tem uma foto. Deseja apagá-la ?")
+		DBSelectArea("AGENDA")
+		If DbrLock(recno())
+			// Limpa a imagem
+			AGENDA->IMAGE := ""
+			DBRUnlock()
+			// Limpa ultima imagem desse ID do cache temporário 			
+			CleanImg(AGENDA->ID)
+			// Carrega a imagem default para limpar 
+			// o cache do componente de imagem 
+			oBmpFoto:Load(,"\temp\tmp_photo_3x4.img")
+		Else
+			// Nao conseguiu bloqueio do registro
+			// Mostra a mensagem e permanece no modo de alteração
+			MsgStop("Registro não pode ser alterado, está sendo usado por outro usuário")
+		Endif
+	Endif
+ElseIF lOk
 	cFile := alltrim(cFile)
 	aFInfo := Directory(cFile)
 	If len(aFInfo) > 0 
@@ -1487,56 +1515,38 @@ IF lOk
 		MsgStop('Arquivo não encontrado',cFile)
 		return 
 	Endif
-
 	// Chegou ate aqui, atualiza o campo memo 
-	
-	cMemoImg := AGENDA->IMAGE
-	
 	If !empty(cMemoImg)
 		lOk := MsgYEsNo("Este contato já tem uma foto. Deseja substituí-la ?")
 	Endif
-
 	If lOk
-
 		// Lê a imagem do disco 			                         
 		cMemoImg := ReadFile(cFile)
-		
 		If empty(cMemoImg)
+			// Imagem vazia, houve falha na leitura 
 			Return
 		Endif
-
 		DBSelectArea("AGENDA")
-
 		If DbrLock(recno())
-
+			// Troca conteudo da imagem no Banco de Dados 
 			AGENDA->IMAGE := cMemoImg
-
 			DBRUnlock()
-			
-			MsgInfo("Imagem atualizada.")
-
 			// Limpa ultima imagem desse ID do cache temporário 			
 			CleanImg(AGENDA->ID)
-
 			// Carrega a imagem default para limpar 
 			// o cache do componente de imagem 
 			oBmpFoto:Load(,"\temp\tmp_photo_3x4.img")
-
 			// Agora Mostra a nova imagem do contato 	
 			ShowImg(oBmpFoto)
-
+			// E Avisa que a imagem foi trocada com sucesso 			
+			MsgInfo("Imagem atualizada.")
 		Else
-			
 			// Nao conseguiu bloqueio do registro
 			// Mostra a mensagem e permanece no modo de alteração
 			MsgStop("Registro não pode ser alterado, está sendo usado por outro usuário")
-			
 		Endif
-		
 	Endif
-
 Endif
-
 Return
 
 
@@ -1544,7 +1554,7 @@ STATIC Function BuscaFile(cFile)
 Local cRet
 
 cRet := cGetFile( 'Imagens PNG|*.png|Imagens JPEG|*.jpg|Imagens BITMAP|*.bmp' , ;
-       'Imagens', 1, 'C:\', .F., 1  ,.T., .T. )
+       'Imagens', 2, 'C:\', .F., 1  ,.T., .T. )
 
 If !empty(cRet) 
 	cFile := padr(cRet,len(cFile))
