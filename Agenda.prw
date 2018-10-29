@@ -4,6 +4,8 @@
 // baseado no tamanho do campo caractere de entrada
 #define CALCSIZEGET( X )  (( X * 4 ) + 4)
 
+#define NAPANELRIGHT    .F. // Menu de navegação alinhado à direita ?
+
 /* =============================================================================
 
 Funcao 	U_AGENDA()
@@ -30,7 +32,7 @@ Melhoria - Busca de CEP integrada
 Melhoria - Mostrar Mapa
 Melhoria - Enviar e-Mail 
 
-Release 1.4 - Foto 3x4
+Release 1.4 - Foto 3x4   
 
 ============================================================================= */
 
@@ -111,20 +113,50 @@ if !file(cImgDefault)
 	fclose(nH)
 Endif
 
-@ 0,0 MSPANEL oPanelMenu OF oDlg SIZE 70,600 COLOR CLR_WHITE,CLR_GRAY
-oPanelMenu:ALIGN := CONTROL_ALIGN_LEFT
+// Paineis 
 
-@ 0,0 MSPANEL oPanelNav OF oDlg SIZE 70,600 COLOR CLR_WHITE,CLR_GRAY
-oPanelNav:ALIGN := CONTROL_ALIGN_RIGHT
+If NAPANELRIGHT
+	
+	// Painéis com o alinhamento do Menu de Navegação à direita
 
-@ 0,0 MSPANEL oPanelCenter OF oDlg SIZE 700,600 COLOR CLR_WHITE,CLR_LIGHTGRAY
-oPanelCenter:ALIGN := CONTROL_ALIGN_ALLCLIENT
+	@ 0,0 MSPANEL oPanelMenu OF oDlg SIZE 70,600 COLOR CLR_WHITE,CLR_GRAY
+	oPanelMenu:ALIGN := CONTROL_ALIGN_LEFT
+	
+	@ 0,0 MSPANEL oPanelNav OF oDlg SIZE 70,600 COLOR CLR_WHITE,CLR_GRAY
+	oPanelNav:ALIGN := CONTROL_ALIGN_RIGHT
+	
+	@ 0,0 MSPANEL oPanelCenter OF oDlg SIZE 700,600 COLOR CLR_WHITE,CLR_LIGHTGRAY
+	oPanelCenter:ALIGN := CONTROL_ALIGN_ALLCLIENT
+	
+	@ 0,0 MSPANEL oPanelOrd OF oPanelCenter SIZE 100,20 COLOR CLR_WHITE,CLR_BLUE
+	oPanelOrd:ALIGN := CONTROL_ALIGN_TOP
+	
+	@ 0,0 MSPANEL oPanelCrud OF oPanelCenter SIZE 700,600 COLOR CLR_WHITE,CLR_LIGHTGRAY
+	oPanelCrud:ALIGN := CONTROL_ALIGN_ALLCLIENT
+	
+Else
 
-@ 0,0 MSPANEL oPanelOrd OF oPanelCenter SIZE 100,20 COLOR CLR_WHITE,CLR_BLUE
-oPanelOrd:ALIGN := CONTROL_ALIGN_TOP
-
-@ 0,0 MSPANEL oPanelCrud OF oPanelCenter SIZE 700,600 COLOR CLR_WHITE,CLR_LIGHTGRAY
-oPanelCrud:ALIGN := CONTROL_ALIGN_ALLCLIENT
+	// Painéis com o alinhamento do Menu de Navegação à esquerda
+	
+	@ 0,0 MSPANEL oPanelMenu OF oDlg SIZE 70,600 COLOR CLR_WHITE,CLR_GRAY
+	oPanelMenu:ALIGN := CONTROL_ALIGN_LEFT
+	
+	@ 0,0 MSPANEL oPanelInt OF oDlg SIZE 70,600 COLOR CLR_WHITE,CLR_GRAY
+	oPanelInt:ALIGN := CONTROL_ALIGN_ALLCLIENT
+	
+	@ 0,0 MSPANEL oPanelNav OF oPanelInt SIZE 70,600 COLOR CLR_WHITE,CLR_GRAY
+	oPanelNav:ALIGN := CONTROL_ALIGN_LEFT
+	
+	@ 0,0 MSPANEL oPanelCenter OF oPanelInt SIZE 700,600 COLOR CLR_WHITE,CLR_LIGHTGRAY
+	oPanelCenter:ALIGN := CONTROL_ALIGN_ALLCLIENT
+	
+	@ 0,0 MSPANEL oPanelOrd OF oPanelCenter SIZE 100,20 COLOR CLR_WHITE,CLR_BLUE
+	oPanelOrd:ALIGN := CONTROL_ALIGN_TOP
+	
+	@ 0,0 MSPANEL oPanelCrud OF oPanelCenter SIZE 700,600 COLOR CLR_WHITE,CLR_LIGHTGRAY
+	oPanelCrud:ALIGN := CONTROL_ALIGN_ALLCLIENT
+	
+Endif
                 
 // Mostra Ordenação atual do arquivo de agenda 
 
@@ -417,6 +449,7 @@ Return .T.
 // ----------------------------------------------------------------------
 // Funcao de encerramento do contexto de dados da Agenda
 // Fecha todos os alias abertos, encerra a conexão com o DBAccess
+// ----------------------------------------------------------------------
 
 STATIC Function CloseDB()
 
@@ -989,8 +1022,10 @@ Endif
 Return
 
 
+/* ---------------------------------------------------
 // Release 1.2
 // Usar cache em memória para gerar a sequencia
+--------------------------------------------------- */
 
 STATIC Function GetNewID()
 Local cLastID,cNewId
@@ -1017,9 +1052,10 @@ PutGlbValue("AGENDA_SEQ",cNewID)
 GlbNmUnlock("AGENDA_ID")
 Return cNewId
 
-
+// ---------------------------------------------------
 // Release 1.1 
 // Exemplo de validação do campo cUF ( Estado ou Unidade da Federação ) 
+// ---------------------------------------------------
 
 STATIC Function VldUf(cUF)
 If Empty(cUF)
@@ -1040,6 +1076,10 @@ MsgSTop("Unidade da Federação inválida ou esconhecida : ["+cUF+"] - "+;
 Return .F.
 
 
+/* ---------------------------------------------------
+Pergunta ao operador se ele deseja alterar a ordem 
+de navegação da agenda, baseado na troca da ordem atual 
+--------------------------------------------------- */
 
 Static Function ChangeOrd(oDlg)
 Local nOrdAtu := AGENDA->(IndexOrd())
@@ -1058,8 +1098,13 @@ if ( nNewOrd > 0 )
 	AGENDA->(DBSETORDER(nNewOrd))
 Endif
 
-return nNewOrd > 0 
+Return nNewOrd > 0 
 
+/* ---------------------------------------------------
+Cria uma caixa de diálogo para pesquisa indexada
+Ordem 1 - Codigo / ID
+Ordem 2 - Nome 
+--------------------------------------------------- */
 
 STATIC Function PesqIndeX(oDlgParent)
 Local oDlgPesq 
@@ -1089,7 +1134,7 @@ Endif
 
 DEFINE DIALOG oDlgPesq TITLE (cTitle) ;
 	FROM 0,0 TO 120,415 PIXEL;
-	FONT oDlgParent:oFont ;
+	FONT oDlgParent:oFont ; // Usa a mesma fonte do diálogo anterior 
 	OF oDlgParent ; 
 	COLOR CLR_BLACK, CLR_LIGHTGRAY 
 
@@ -1107,6 +1152,10 @@ Endif
 
 Return 
 
+// ---------------------------------------------------
+// Realiza a busca na tabela de Agenda de acordo 
+// com o valor e campo informado para a pesquisa
+// ---------------------------------------------------
 
 STATIC Function SeekAgenda(cIndexFld,cStrBusca)
 
@@ -1355,6 +1404,11 @@ ACTIVATE DIALOG oDlgMail CENTER
 Return
 
 
+// ---------------------------------------------------
+// Mostra / atualiza a imagem 3x4 do contato atualmente 
+// posicionado na tela da Agenda, canto inferior esquerdo
+// ---------------------------------------------------
+
 STATIC Function ShowImg(oBmpFoto)
 Local cTmpPath
 Local nH
@@ -1393,6 +1447,10 @@ Endif
 
 Return     
 
+// ---------------------------------------------------
+// Funcao de inicialização responsável por abrir a conexão 
+// com o banco de dados 
+// ---------------------------------------------------
 
 STATIC Function OpenDB()
 
@@ -1406,6 +1464,11 @@ Endif
 
 Return
 
+
+// ---------------------------------------------------
+// Função que retorna uma imagen PNG contendo 
+// a foto 3x4 padrao da Agenda
+// ---------------------------------------------------
 
 STATIC Function RAW3x4()
 Local cRaw := ''
@@ -1441,7 +1504,10 @@ cRaw += HEx2Bin('000049454E44AE426082')
 Return cRaw
 
 
-
+// ---------------------------------------------------
+// Funcao de Conversao de pares de string hexadecimal
+// para o byte (char) correspondente. 
+// ---------------------------------------------------
 STATIC function HEx2Bin(cHex)
 Local cBin := ''
 For nI := 1 to len(cHex) STEP 2
@@ -1449,6 +1515,10 @@ For nI := 1 to len(cHex) STEP 2
 Next
 Return cBin
 
+// ---------------------------------------------------
+// Função disparada da agenda para Atribuir, trocar 
+// ou limpar a foto 3x4 do contato atualmente posicionado 
+// ---------------------------------------------------
 
 STATIC Function ChgImage(oDlg,aBtns,aGets,oBmpFoto)
 Local cTitle := 'Escolha uma imagem'
@@ -1549,6 +1619,10 @@ ElseIF lOk
 Endif
 Return
 
+// ---------------------------------------------------
+// Abre uma caixa de diálogo para busca e seleção 
+// da imagem a ser atribuída a um contato 
+// ---------------------------------------------------
 
 STATIC Function BuscaFile(cFile)
 Local cRet
@@ -1562,7 +1636,10 @@ Endif
 
 return 
 
-
+// ---------------------------------------------------
+// Realiza a leitura de um arquivo de imagem do disco 
+// e armazena seu conteudo em uma variável caractere do AdvPL 
+// ---------------------------------------------------
 STATIC Function ReadFile(cFile)
 Local cBuffer := ''
 Local nH , nTam
@@ -1579,13 +1656,10 @@ Endif
 Return cBuffer
 
 
-STATIC Function ShowObj(oObj)
-Local aInfo := ClassDataArr(oObj,.T.)
-Local ni
-For nI := 1 to len(aInfo)
-	conout(aInfo[nI][1]+' = '+cValToChar(aInfo[nI][2]))
-Next
-Return
+// ---------------------------------------------------
+// Função responsável por limpar o cache 
+// de visualuzação da imagem do disco 
+// ---------------------------------------------------
 
 STATIC Function CleanImg(cID)
 Local cTmpPath
@@ -1593,5 +1667,5 @@ cTmpPath := "\temp\tmp_"
 cTmpPath += cID
 cTmpPath += ".img"
 ferase(cTmpPath)
-return
+Return
 
