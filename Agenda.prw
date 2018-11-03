@@ -56,10 +56,13 @@ DEFINE DIALOG oDlg TITLE (cTitle) ;
 
 // Ativa a janela principal
 // O contexto da Agenda e os componentes são colocados na tela
-// pela função DoInit()
+// pela função RunAgenda()
+
+// Release 20180111
+// Acrescentar validação de usuário antes de mais nada 
 
 ACTIVATE DIALOG oDlg CENTER ;
-	ON INIT MsgRun("Aguarde...","Iniciando AGENDA", {|| DoInit(oDlg) }) ;
+	ON INIT ( MsgRun("Aguarde...","Iniciando AGENDA", {|| OpenDB() }) , ChkUser(oDlg), RunAgenda(oDlg) ) ;
 	VALID CanQuit()
 
 // Fecha contexto de dados
@@ -67,22 +70,24 @@ CloseDB()
 
 return
 
+
 /* ------------------------------------------
-Inicialização da Aplicação
-Cria pain[eis e um menu de opções com botões
+Execução da Agenda 
+Cria a interface da Agenda com todas as suas funcionalidades
+Tods a manutenção da Agenda é montada em cima desse diálogo 
 ------------------------------------------ */
 
-STATIC Function doInit(oDlg)
+STATIC Function RunAgenda(oDlg)
 Local oPanelMenu, oPanelCrud, oPanelNav
-Local oBtn1,oBtn2,oBtn3,oBtn4,oBtn5,oBtn6
 Local oSay1,oSay2,oSay3,oSay4,oSay5,oSay6,oSay7,oSay8,oSay9,oSayA,oSayB
 Local oGet1,oGet2,oGet3,oGet4,oGet5,oGet6,oGet7,oGet8,oGet9,oGetA,oGetB
+Local oBtnInc,oBtnAlt,oBtnDel,oBtnExit
 Local oBtnFirst, oBtnPrev, oBtnNext, oBtnLast, oBtnPesq, oBtnOrd
 Local oBtnMap, oBtnMail, oBtnImg
 Local oSayOrd , oBtnCEP, oBmpFoto
 Local aGets := {}
 Local aBtns := {}
-Local nMode := 0
+Local nMode := 0  
 Local cImgDefault := "\temp\tmp_photo_3x4.img"
 Local nH
 
@@ -100,10 +105,7 @@ Local cEmail   := Space(40)
 
 CursorArrow() ; CursorWait()
 
-// Abra conexao com banco de dados 
-OpenDB()
-
-// Abre contexto de dados da agenda
+// Abre o contexto de dados da agenda
 OpenAgenda()
 
 // Cria a imagem padrao da agenda 3x4
@@ -165,23 +167,21 @@ oSayOrd:SetText("Ordem .... "+ AGENDA->(IndexKey()))
 
 // Cria os botões no Painel Lateral ( Menu )
 
-@ 05,05  BUTTON oBtn1 PROMPT "Incluir" SIZE 60,15 ;
+@ 05,05  BUTTON oBtnInc PROMPT "Incluir" SIZE 60,15 ;
 	ACTION ManAgenda(oDlg,aBtns,aGets,1,@nMode,oSayOrd,oBmpFoto) OF oPanelMenu PIXEL
-aadd(aBtns,oBtn1) // Botcao de Inclusao
+aadd(aBtns,oBtnInc) // Botcao de Inclusao
 
-@ 20,05  BUTTON oBtn2 PROMPT "Alterar" SIZE 60,15 ;
+@ 20,05  BUTTON oBtnAlt PROMPT "Alterar" SIZE 60,15 ;
+    WHEN !eof() ; 
 	ACTION ManAgenda(oDlg,aBtns,aGets,2,@nMode,oSayOrd,oBmpFoto) OF oPanelMenu PIXEL
-aadd(aBtns,oBtn2) // Botao de alteração
+aadd(aBtns,oBtnAlt) // Botao de alteração
 
-@ 35,05  BUTTON oBtn3 PROMPT "Excluir" SIZE 60,15 ;
+@ 35,05  BUTTON oBtnDel PROMPT "Excluir" SIZE 60,15 ;
+    WHEN !eof() ; 
 	ACTION ManAgenda(oDlg,aBtns,aGets,3,@nMode,oSayOrd,oBmpFoto) OF oPanelMenu PIXEL
-aadd(aBtns,oBtn3) // Botão de exclusão
+aadd(aBtns,oBtnDel) // Botão de exclusão
 
-@ 50,05  BUTTON oBtn4 PROMPT "Consultar" SIZE 60,15 ;
-	ACTION ManAgenda(oDlg,aBtns,aGets,4,@nMode,oSayOrd,oBmpFoto) OF oPanelMenu PIXEL
-aadd(aBtns,oBtn4) // Botão de Consulta - Navegação
-
-@ 65,05  BUTTON oBtn5 PROMPT "Sair" SIZE 60,15 ;
+@ 65,05  BUTTON oBtnExit PROMPT "Sair" SIZE 60,15 ;
 	ACTION oDlg:End() OF oPanelMenu PIXEL
 
 @ 90,05 BITMAP oBmpFoto OF oPanelMenu PIXEL 
@@ -225,6 +225,9 @@ oBmpFoto:lStretch := .T.
 @ 110,110  BUTTON oBtnCEP PROMPT "Buscar CEP" SIZE 60,14 ;
     WHEN (oGet8:LACTIVE) ; 
 	ACTION BuscaCEP(oDlg,aBtns,aGets)  OF oPanelCrud PIXEL
+
+// Este botão já nasce desligado
+oBtnCEP:Disable()
 
 // Novos campos inseridos em 07/10
 @ 125,60 GET oGet9 VAR cFone1       PICTURE "@!" SIZE CALCSIZEGET(20),12 OF oPanelCrud PIXEL
@@ -290,19 +293,26 @@ aadd(aBtns,oBtnOrd) // [12] Ordem
 aadd(aBtns,oBtnMap) // [13] Mapa
 
 @ 110,05  BUTTON oBtnMail PROMPT "G-Mail" SIZE 60,15 ;
-    WHEN !empty(cEMAIL) ; 
+    WHEN(  !empty(cEMAIL) .and. !eof() ) ; 
 	ACTION SendGMail(cEMAIL)  OF oPanelNav PIXEL
 aadd(aBtns,oBtnMail) // [14] e-Mail
 
 @ 125,05  BUTTON oBtnImg PROMPT "Foto 3x4" SIZE 60,15 ; 
-    WHEN ( nMode == 4  ) ; // Editar foro disponivel apenas durante a consulta
+    WHEN ( nMode == 4 .and. !eof() ) ; // Editar foro disponivel apenas durante a consulta
 	ACTION ChgImage(oDlg,aBtns,aGets,oBmpFoto)  OF oPanelNav PIXEL
 aadd(aBtns,oBtnImg) // [15] Foto 3x4
 
-// Seta a interface para o estado inicial
-// Habilita apenas inserção e consulta 
-nMode := 0
-AdjustMode(oDlg,aBtns,aGets,nMode)
+// Agenda passa a ser aberta direto na consulta 
+ManAgenda(oDlg,aBtns,aGets,4,@nMode,oSayOrd,oBmpFoto)
+
+IF Eof()
+	// Nao tem registro atual 
+	// desabilita os botoes de alterar, excluir, email e troca de imagem 
+	oBtnAlt:Disable()
+	oBtnDel:Disable()
+	oBtnImg:Disable()
+	oBtnMail:Disable()
+Endif
 
 Return .T.
 
@@ -431,9 +441,6 @@ If NetErr()
 	QUIT
 Endif
 
-// Liga o filtro para ignorar registros deletados 
-SET DELETED ON 
-
 // Abre os indices, seleciona ordem por ID
 // E Posiciona no primeiro registro 
 DbSetIndex(cFile+'1')
@@ -443,6 +450,117 @@ DbGoTop()
 
 // Solta o MUTEX 
 GlbNmUnlock("AGENDA_DB")
+
+Return .T.
+
+// --------------------------------------------------------------
+// Abertura da Tabela de USUARIOS da Agenda
+// Cria uma tabela chamda "USUARIOS" no Banco de dados atual
+// configurado no Environment em uso pelo DBAccess
+// Cria a tabela caso nao exista, cria os índices caso nao existam
+// Abre e mantém a tabela aberta em modo compartilhado
+// --------------------------------------------------------------
+STATIC Function OpenUsers()
+Local cFile := "USUARIOS"
+Local aStru := {}
+Local aDbStru := {}
+Local nRet
+
+While !GlbNmLock("USUARIOS_DB")
+	If !MsgYesNo("Existe outro processo abrindo a tabela USUARIOS. Deseja tentar novamente ?")
+		MSgStop("Abertura da tabela USUARIOS em uso -- tente novamente mais tarde.")
+		QUIT
+	Endif
+Enddo
+
+// Cria o array com os campos do arquivo 
+aadd(aStru,{"IDUSR"  ,"C",06,0})
+aadd(aStru,{"LOGIN"  ,"C",50,0})
+aadd(aStru,{"SENHA"  ,"C",32,0})
+
+If !TCCanOpen(cFile)
+	
+	// Se o arquivo nao existe no banco, cria
+	DBCreate(cFile,aStru,"TOPCONN")
+	
+Else
+
+	// O Arquivo já existe, vamos comparar as estruturas
+	USE (cFile) ALIAS (cFile) SHARED NEW VIA "TOPCONN"
+	IF NetErr()
+		MsgSTop("Falha ao abrir a tabela USUARIOS em modo compartilhado. Tente novamente mais tarde.")
+		QUIT
+	Endif
+	aDbStru := DBStruct()
+	USE
+	
+	If len(aDbStru) != len(aStru)
+		// Estao faltando campos no banco ? 
+		// Vamos alterar a estrutura da tabela
+		// Informamos a estrutura atual, e a estrutura esperada
+		If !TCAlter(cFile,aDbStru,aStru)
+			MsgSTop(tcsqlerror(),"Falha ao alterar a estrutura da tabela USUARIOS")
+			QUIT
+		Endif
+		MsgInfo("Estrutura do arquivo USUARIOS atualizada.")
+	Endif
+	
+Endif
+
+If !TCCanOpen(cFile,cFile+'_UNQ')
+	// Se o Indice único da tabela nao existe, cria 
+	USE (cFile) ALIAS (cFile) EXCLUSIVE NEW VIA "TOPCONN"
+	IF NetErr()
+		MsgSTop("Falha ao abrir a tabela USUARIOS em modo EXCLUSIVO. Tente novamente mais tarde.")
+		QUIT
+	Endif
+	nRet := TCUnique(cFile,"LOGIN")
+	If nRet < 0 
+		MsgSTop(tcsqlerror(),"Falha ao criar índice único")
+		QUIT
+	Endif
+	USE
+EndIf
+
+If !TCCanOpen(cFile,cFile+'1')
+	// Se o Indice por ID nao existe, cria
+	USE (cFile) ALIAS (cFile) EXCLUSIVE NEW VIA "TOPCONN"
+	IF NetErr()
+		MsgSTop("Falha ao abrir a tabela USUARIOS em modo EXCLUSIVO. Tente novamente mais tarde.")
+		QUIT
+	Endif
+	INDEX ON IDUSR TO (cFile+'1')
+	USE
+EndIf
+
+If !TCCanOpen(cFile,cFile+'2')
+	// Se o indice por LOGIN nao existe, cria
+	USE (cFile) ALIAS (cFile) EXCLUSIVE NEW VIA "TOPCONN"
+	IF NetErr()
+		MsgSTop("Falha ao abrir a tabela USUARIOS em modo EXCLUSIVO. Tente novamente mais tarde.")
+		QUIT
+	Endif
+	INDEX ON LOGIN TO (cFile+'2')
+	USE
+EndIf
+
+// Abra o arquivo de agenda em modo compartilhado
+USE (cFile) ALIAS (cFile) SHARED NEW VIA "TOPCONN"
+
+If NetErr()
+	MsgSTop("Falha ao abrir a tabela USUARIOS em modo compartilhado. Tente novamente mais tarde.")
+	QUIT
+Endif
+
+// Abre os indices, seleciona ordem por ID
+// E Posiciona no primeiro registro 
+DbSetIndex(cFile+'1')
+DbSetIndex(cFile+'2')
+DbSetOrder(1)
+DbGoTop()
+
+// Solta o MUTEX 
+GlbNmUnlock("USUARIOS_DB")
 
 Return .T.
 
@@ -562,12 +680,6 @@ ElseIf nAction == 4
 	
 	DBSelectArea("AGENDA")
 	
-	// Primeiro verifica se tem alguma coisa para ser mostrada
-	If BOF() .and. EOF()
-		MsgStop("Não há registros na Agenda.","Consultar")
-		Return .F.
-	Endif
-	
 	// Consulta em ordem alfabética, inicia no primeiro registro
 	DbsetOrder(2)
 	DBGotop()
@@ -575,12 +687,15 @@ ElseIf nAction == 4
 	// Atualiza texto com a ordem 
 	oSayOrd:SetText("Ordem .... "+ AGENDA->(IndexKey()))
 	
-	// Coloca os dados do registro na tela
-	ReadRecord(aGets)
+	If !EOF()
+		// Se tem registro atual, 
+		// Coloca os dados do registro na tela
+		ReadRecord(aGets)
+	Endif
 
 	// Mostra a imagem do contato 	
 	ShowImg(oBmpFoto)
-	
+
 	// Seta que o modo atual é Consulta
 	nMode := 4
 	AdjustMode(oDlg,aBtns,aGets,nMode)
@@ -632,8 +747,8 @@ ElseIf nAction == 5  // Confirma
 		// Atualiza texto com a ordem 
 		oSayOrd:SetText("Ordem .... "+ AGENDA->(IndexKey()))
 		
-		// Volta ao modo inicial
-		nMode := 0
+		// Volta ao modo de Consulta 
+		nMode := 4
 		AdjustMode(oDlg,aBtns,aGets,nMode)
 		
 	ElseIF nMode == 2
@@ -683,12 +798,8 @@ ElseIf nAction == 5  // Confirma
 
 			If BOF() .and. EOF()
 				                              
-				// Se nao tem mais registros visiveis, volta ao estado inicial
+				// nao tem mais registros visiveis, volta ao estado inicial
 				MsgStop("Não há mais registros para visualização")
-				
-				// Volta ao modo inicial
-				nMode := 0
-				AdjustMode(oDlg,aBtns,aGets,nMode)
 				
 			Else
 			
@@ -698,12 +809,11 @@ ElseIf nAction == 5  // Confirma
 				// Mostra a imagem do contato 	
 				ShowImg(oBmpFoto)
 				
-				// Retorna ao modo de consulta
-				nMode := 4
-				AdjustMode(oDlg,aBtns,aGets,nMode)
-				
 			Endif
-			
+
+			// Retorna ao modo de consulta
+			nMode := 4
+			AdjustMode(oDlg,aBtns,aGets,nMode)
 			
 		Else
 			
@@ -742,29 +852,17 @@ ElseIf nAction == 6  // Voltar / Abandonar operação atual
 	Endif
 	
 	If lVolta
-		
-		IF nMode == 2 .or. nMode == 3
-			
-			// Se eu estava fazendo uma alteração ou exclusão,
-			// eu devo voltar para o modo de consulta
-			
-			// Release 1.1
-			// Atualiza os dados do registro atual na tela
-			ReadRecord(aGets)
 
-			// Mostra a imagem do contato 	
-			ShowImg(oBmpFoto)
+		// Qualquer cancelamento, volta para o modo de consulta
+		// Atualiza os dados do registro atual na tela
+		ReadRecord(aGets)
 
-			nMode := 4
-			AdjustMode(oDlg,aBtns,aGets,nMode)
-			
-		Else
-			
-			// Qualquer outro cancelamento, volta ao estado inicial
-			nMode := 0
-			AdjustMode(oDlg,aBtns,aGets,nMode)
-			
-		Endif
+		// Mostra a imagem do contato 	
+		ShowImg(oBmpFoto)
+
+		// Ajusta tela em modo de consulta 
+		nMode := 4
+		AdjustMode(oDlg,aBtns,aGets,nMode)
 
 	Endif
 	
@@ -872,6 +970,7 @@ For nI := 1 to nT
 	nPos := Fieldpos( aGets[nI][1] )
 	cValue := FieldGet(nPos)
 	EVAL( aGets[nI][2]:bSetGet, cValue)
+	aGets[nI][2]:Refresh()
 Next
 Return
 
@@ -900,7 +999,7 @@ Return
 // -------------------------------------------------
 STATIC Function SetNavBtn(aBtns,lEnable)
 Local nI
-For nI := 7 to 13
+For nI := 6 to 12
 	aBtns[nI]:SetEnable(lEnable)
 Next
 Return
@@ -914,7 +1013,6 @@ STATIC Function DisableOPs(aBtns)
 aBtns[1]:Disable() // Inclusao
 aBtns[2]:Disable() // Alteracao
 aBtns[3]:Disable() // Exclusao
-aBtns[4]:Disable() // Consulta / Navegação
 return
 
 // -------------------------------------------------
@@ -922,32 +1020,7 @@ return
 // -------------------------------------------------
 STATIC Function AdjustMode(oDlg,aBtns,aGets,nMode)
 
-If nMode == 0
-	
-	// Modo inicial 
-	// Habilita apenas inclisao e consulta 
-	oDlg:CTITLE("CRUD - Agenda")
-	
-	// Modo incial habilita apenas inclusao e consulta
-	// Alteração e Exclusao somente serao habilitados 
-	// quando a interface estiver mostrando um registro 
-	
-	aBtns[1]:Enable()   // Inclusao
-	aBtns[2]:Disable()  // Alteracao
-	aBtns[3]:Disable()  // Exclusao
-	aBtns[4]:Enable()   // Consulta / Navegação
-	
-	// Esconde Confirmar e Voltar
-	aBtns[5]:Hide()  // Confirma
-	aBtns[6]:Hide()  // Volta
-	
-	// Esconde botoes de navegação
-	SetNavBtn(aBtns,.F.)
-	
-	// Limpa todos os valores de tela , desabilitando os GETS
-	ClearGets(aGets , .F. )
-
-ElseIf nMode == 1
+If nMode == 1
 	
 	oDlg:CTITLE("CRUD - Agenda (Inclusão)")
 	
@@ -956,8 +1029,8 @@ ElseIf nMode == 1
 	DisableOPs(aBtns)          
 	
 	// Mostra Confirmar e Voltar
-	aBtns[5]:Show() // Confirmar
-	aBtns[6]:Show() // Voltar
+	aBtns[4]:Show() // Confirmar
+	aBtns[5]:Show() // Voltar
 	
 	// Esconde botoes de navegação
 	SetNavBtn(aBtns,.F.)
@@ -972,8 +1045,8 @@ ElseIF  nMode == 2
 	DisableOPs(aBtns)
 	                        
 	// Mostra Confirmar e Voltar
-	aBtns[5]:Show() // Confirmar
-	aBtns[6]:Show() // Voltar
+	aBtns[4]:Show() // Confirmar
+	aBtns[5]:Show() // Voltar
 	
 	// Esconde botoes de navegação
 	SetNavBtn(aBtns,.F.)
@@ -991,8 +1064,8 @@ ElseIF  nMode == 3
 	DisableOPs(aBtns)
 	
 	// Mostra Confirmar e Voltar
-	aBtns[5]:Show() // Confirmar
-	aBtns[6]:Show() // Voltar
+	aBtns[4]:Show() // Confirmar
+	aBtns[5]:Show() // Voltar
 	
 	// Esconde botoes de navegação
 	SetNavBtn(aBtns,.F.)
@@ -1008,15 +1081,18 @@ ElseIF  nMode == 4
 	aBtns[1]:Enable() // Inclusao
 	aBtns[2]:Enable() // Alteracao
 	aBtns[3]:Enable() // Exclusao
-	aBtns[4]:Disable() // Consulta / Navegação
 	
 	// Esconde Confirmar e Voltar
-	aBtns[5]:Hide() // Confirmar
-	aBtns[6]:Hide() // Voltar
+	aBtns[4]:Hide() // Confirmar
+	aBtns[5]:Hide() // Voltar
 	
-	// Mostra botoes de navegação apenas na consulta 
-	SetNavBtn(aBtns,.T.)
-	
+	IF EOF()
+		// Nao tem registro atual, desliga navegação 
+		SetNavBtn(aBtns,.F.)
+	Else
+		// Mostra botoes de navegação apenas na consulta 
+		SetNavBtn(aBtns,.T.)
+	Endif	
 Endif
 
 Return
@@ -1114,7 +1190,7 @@ Local nTamanho
 Local nRecSave 
 Local lFound := .F.
 Local cIndexFld := AGENDA->(Indexkey())
-Local oGet1 , oBtn1
+Local oGetBusca , oBtnBusca
 
 // Monta titulo da janela de pesquisa
 cTitle := 'Pesquisa por '+ cIndexFld
@@ -1138,10 +1214,10 @@ DEFINE DIALOG oDlgPesq TITLE (cTitle) ;
 	OF oDlgParent ; 
 	COLOR CLR_BLACK, CLR_LIGHTGRAY 
 
-@ 05,05 GET oGet1 VAR cStrBusca   PICTURE (cPicture)   SIZE CALCSIZEGET(nTamanho) ,12 OF oDlgPesq PIXEL
+@ 05,05 GET oGetBusca VAR cStrBusca   PICTURE (cPicture)   SIZE CALCSIZEGET(nTamanho) ,12 OF oDlgPesq PIXEL
 
-@ 25,05 BUTTON oBtn1 PROMPT "Buscar" SIZE 60,15 ;
-	ACTION IIF( SeekAgenda(cIndexFld,cStrBusca) , (lFound := .T. , oDlgPesq:End()) , oGet1:SetFocus() ) OF oDlgPesq PIXEL
+@ 25,05 BUTTON oBtnBusca PROMPT "Buscar" SIZE 60,15 ;
+	ACTION IIF( SeekAgenda(cIndexFld,cStrBusca) , (lFound := .T. , oDlgPesq:End()) , oGetBusca:SetFocus() ) OF oDlgPesq PIXEL
 
 ACTIVATE DIALOG oDlgPesq CENTER
 
@@ -1281,10 +1357,9 @@ Return
 Busca na WEB o CEP Informado 
 Usa API en JSON oferecida pelo site viacep.com.br
 Retorno da API  : 
- 
 {
   "cep": "06709-300",
-  "logradouro": "Estrada Aldeia",
+    "logradouro": "Estrada Aldeia",
   "complemento": "",
   "bairro": "Granja Viana",
   "localidade": "Cotia",
@@ -1462,6 +1537,9 @@ If nH < 0
 	QUIT
 Endif
 
+// Liga o filtro para ignorar registros deletados na navegação ISAM 
+SET DELETED ON 
+
 Return
 
 
@@ -1500,14 +1578,13 @@ cRaw += HEx2Bin('28A1A18486121A4A6828A1A18486121A4A6828A1A18486121A4A6828A1A1848
 cRaw += HEx2Bin('86121A4A6828A1A18486121A4A6828A1A18486121A4A6828A1A18486121A4A6828A1A18486121A4A')
 cRaw += HEx2Bin('6828A1A18486121A4A6828A1A18486121A4A6828A1A18486121AE9EBEB1FDCCEA468FA802AA60000')
 cRaw += HEx2Bin('000049454E44AE426082')
-
 Return cRaw
-
 
 // ---------------------------------------------------
 // Funcao de Conversao de pares de string hexadecimal
 // para o byte (char) correspondente. 
 // ---------------------------------------------------
+
 STATIC function HEx2Bin(cHex)
 Local cBin := ''
 For nI := 1 to len(cHex) STEP 2
@@ -1526,7 +1603,7 @@ Local oDlgImg
 Local cFile := space(50)
 Local lOk := .F. , lErase := .F.
 Local aFInfo
-Local oGet1, oBtn1, oBtn2, oBtn3
+Local oGetFile, oBtnBusca, oBtnOk, oBtnErase
 Local cMemoImg := AGENDA->IMAGE
 
 DEFINE DIALOG oDlgImg TITLE (cTitle) ;
@@ -1535,22 +1612,22 @@ DEFINE DIALOG oDlgImg TITLE (cTitle) ;
 	OF oDlg ; 
 	COLOR CLR_BLACK, CLR_HBLUE
 
-@ 05,05 GET oGet1 VAR cFile  SIZE CALCSIZEGET(50),12 OF oDlgImg PIXEL
+@ 05,05 GET oGetFile VAR cFile  SIZE CALCSIZEGET(50),12 OF oDlgImg PIXEL
 
-@ 25,05 BUTTON oBtn1 PROMPT "Buscar" SIZE 60,15 ;
+@ 25,05 BUTTON oBtnBusca PROMPT "Buscar" SIZE 60,15 ;
 	ACTION (BuscaFile(@cFile)) OF oDlgImg PIXEL
 
-@ 25,70 BUTTON oBtn2 PROMPT "Ok" SIZE 60,15 ;
+@ 25,70 BUTTON oBtnOk PROMPT "Ok" SIZE 60,15 ;
     WHEN File(alltrim(cFile)) ; 
 	ACTION ( lOk := .T. , oDlgImg:End() ) OF oDlgImg PIXEL
 
-@ 25,135 BUTTON oBtn3 PROMPT "Apagar" SIZE 60,15 ;
+@ 25,135 BUTTON oBtnErase PROMPT "Apagar" SIZE 60,15 ;
 	ACTION ( lErase := .T. , oDlgImg:End() ) OF oDlgImg PIXEL
 
 if Empty(cMemoImg)
 	// Se o contato nao tem foto, não mostra o
 	// botão para apagar a foto 
-	oBtn3:Hide()
+	oBtnErase:Hide()
 Endif
 
 ACTIVATE DIALOG oDlgImg CENTER
@@ -1640,6 +1717,7 @@ return
 // Realiza a leitura de um arquivo de imagem do disco 
 // e armazena seu conteudo em uma variável caractere do AdvPL 
 // ---------------------------------------------------
+
 STATIC Function ReadFile(cFile)
 Local cBuffer := ''
 Local nH , nTam
@@ -1668,4 +1746,102 @@ cTmpPath += cID
 cTmpPath += ".img"
 ferase(cTmpPath)
 Return
+
+
+// ---------------------------------------------------
+// Função responsável pelo controle de acesso - Login
+// Somente exige autenticação se o cadastro de usuários tiver 
+// pelo menos um usuário 
+// ---------------------------------------------------
+STATIC Function ChkUser(oDlg)
+Local lOk := .T.
+
+// Abre cadastro de usuarios
+OpenUsers()
+
+// Vai para o topo do arquivo 
+DbSelectarea("USUARIOS")
+DBGoTOP()
+
+//If !EOF()
+	// Se existem usuarios na tabela de usuarios, 
+	// o login foi habilitado . 
+	lOk := DoLogin(oDlg)
+//Endif
+
+// Fecha o cadastro de usuarios 
+DbSelectarea("USUARIOS")
+USE 
+    
+If !lOk
+	MsgStop("Usuário não autenticado.","Controle de Acesso")
+	QUIT
+Endif
+
+Return 
+
+// Definições para uso da função AdvPL MD5()
+#define RAW_DIGEST 1 
+#define HEX_DIGEST 2
+
+STATIC Function DoLogin(oDlg)
+Local cTitle := 'Controle de Acesso'
+Local oDlgLogin
+Local oGetLogin
+Local cLogin := space(50)
+Local cPassW := space(16)
+Local oBtnOk
+Local lGo,lOk
+
+While .T.
+	            
+	lGo := .F.
+	lOk := .F. 
+	
+	cLogin := space(50)
+	cPassW := space(16)
+
+	DEFINE DIALOG oDlgLogin TITLE (cTitle) ;
+		FROM 0,0 TO 90,450 PIXEL;
+		FONT oDlg:oFont ; // Usa a mesma fonte do diálogo anterior
+		OF oDlg ;
+		COLOR CLR_WHITE, CLR_RED
+
+    @ 05+3,05 SAY oSay1 PROMPT "Login"  RIGHT SIZE 20,12 OF oDlgLogin PIXEL
+	@ 05,30 GET oGetLogin VAR cLogin   PICTURE "@!"  SIZE CALCSIZEGET(45) ,12 OF oDlgLogin PIXEL
+	
+    @ 25+3,05 SAY oSay1 PROMPT "Senha"  RIGHT SIZE 20,12 OF oDlgLogin PIXEL
+	@ 25,30 GET oGetPassw VAR cPassW   SIZE CALCSIZEGET(16) ,12 OF oDlgLogin PIXEL
+	oGetPassw:LPASSWORD := .T. 
+
+	@ 25,155 BUTTON oBtnOk PROMPT "Ok" SIZE 60,15 ;
+		ACTION (lGo := .T. , oDlgLogin:End()) OF oDlgLogin PIXEL
+	
+	ACTIVATE DIALOG oDlgLogin CENTER
+	
+	If !lGo
+		// SE a janela foi fechada, desiste 
+		EXIT
+	Endif
+	
+	DbSelectarea("USUARIOS")
+	DBSetOrder(2) // Indice por LOGIN
+
+	If DBSeek(cLogin)
+		// Encontrou o Login informado
+		If MD5(alltrim(cPassW),HEX_DIGEST) == USUARIOS->SENHA
+			// A senha informada "bate" com a senha original
+			// Seta que está OK, sai do Login
+			lOk := .T.
+			EXIT
+		Endif	
+	Endif
+
+	// Chegou aqui, o login nao existe ou a senha nao confere 
+	MsgStop("Login ou senha inválidos. Confirme os dados e repita a operação.", ;
+	        "Falha de Autenticação")
+	
+Enddo
+
+Return lOk 
 
