@@ -1,0 +1,11 @@
+<html><body>
+<p>Formulário de POST</p>
+<form action="/postinfo.apw" method="post">
+  First name:<br>
+  <input type="text" name="firstname"><br>
+  Last name:<br>
+  <input type="text" name="lastname">
+  <hr>
+  <input type="submit" value="Enviar">
+</form>
+</body></html>

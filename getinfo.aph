@@ -1,0 +1,5 @@
+<html><body>
+<p>Informações por GET</p>
+<p>ID = <%=HTTPGET->ID%></p>
+<p>NOME = <%=HTTPGET->NOME%></p>
+</body></html>

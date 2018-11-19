@@ -1,0 +1,5 @@
+<html><body>
+<p>Dados Sumbetidos</p>
+<p>First name: <%=HTTPPOST->FIRSTNAME%><br>
+Last name: <%=HTTPPOST->LASTNAME%></p>
+</body></html>
