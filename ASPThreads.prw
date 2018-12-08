@@ -10,11 +10,21 @@ U_ASPConn -- Responsavel por atender a uma requisição de link .apw vinda do Brow
 ================================================================================= */
 
 User Function ASPInit()
+Local nTopHnd
 
 SET DATE BRITISH
 SET CENTURY ON 
 
-ConsoleMsg("ASPINIT - Thread Advpl ASP ["+cValToChar(ThreadID())+"] Inicianda")
+nTopHnd := TCLInk()
+
+If nTopHnd < 0 
+	ConsoleMsg("ASPINIT - Falha de conexão "+cValToChar(nTopHnd))
+	Return .F.
+Endif
+
+SET DELETED ON 
+
+ConsoleMsg("ASPINIT - Thread Advpl ASP ["+cValToChar(ThreadID())+"] Iniciada")
 
 Return .T.
 
@@ -39,11 +49,21 @@ If !empty(cAspPage)
 		// Execura a página INDEX.APH compilada no RPO 
 		// A String retornada deve retornar ao Browser
 		cReturn := H_INDEX()
+	case cAspPage == 'login'
+		// Realiza login de usuário
+		cReturn := U_WLOGIN()
+	case cAspPage == 'logoff'
+		// Realiza logoff de usuário
+		cReturn := U_WLOGOFF()
+	case cAspPage == 'agenda'
+		// Executa a agenda em AdvPL ASP 
+		// Os controles e páginas estão encapsulados pela função U_WAgenda()
+		cReturn := U_WAGENDA()
 	case cAspPage == 'getinfo'
 	    // Executa a pagina GetInfo.APH
 	    cReturn := H_GETINFO()
 	case cAspPage == 'headinfo'
-	    // Executa a pagina GetInfo.APH
+	    // Executa a pagina HeadInfo.APH
 	    cReturn := H_HEADINFO()
 	case cAspPage == 'formpost'
 	    // Executa a pagina FormPost
@@ -51,6 +71,8 @@ If !empty(cAspPage)
 	case cAspPage == 'postinfo'
 	    // Executa a pagina PostInfo
 	    cReturn := H_POSTINFO()
+	case cAspPage == 'aspinfo'
+	    cReturn := H_ASPINFO()
 	otherwise
 		// retorna HTML para informar 
 		// a condição de página desconhecida
