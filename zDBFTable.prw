@@ -64,6 +64,8 @@ CLASS ZDBFTABLE FROM LONGNAMECLASS
   DATA nLastError			// Ultimo erro ocorrido 
   DATA cLastError			// Descrição do último erro 
 
+  // ========================= Metodos de uso público da classe
+
   METHOD NEW(cFile)			// Construtor 
   METHOD OPEN()				// Abertura da tabela 
   METHOD CLOSE()			// Fecha a tabela 
@@ -94,9 +96,10 @@ CLASS ZDBFTABLE FROM LONGNAMECLASS
   METHOD GetErrorCode()     // Retorna apenas oCodigo do ultimo erro ocorrido
   METHOD GetErrorStr()		// Retorna apenas a descrição do último erro ocorrido
 
+  // ========================= Metodos de uso interno da classe
+
   METHOD _ResetError()		// Limpa a ultima ocorrencia de erro 
   METHOD _SetError()        // Seta uma nova ocorrencia de erro 
-
   METHOD _ResetVars() 		// Inicializa propriedades do Objeto, no construtor e no CLOSE
   METHOD _ReadHeader()		// Lê o Header do arquivo  de dados
   METHOD _ReadStruct()		// Lê a estrutura do arquivo de dados 
@@ -881,7 +884,7 @@ Return substr(cBuffer,nOffset+1,nSize)
 // Converte um valor decimal para Hexadecimal maiusculo, 
 // prefixando o retorno com "0x"
 STATIC Function Byte2Hex(nByte)
-Return '0x'+padl( upper(__DECTOHEX(nByte)) , 2 , '0')
+Return '0x'+padl( upper(DEC2HEX(nByte)) , 2 , '0')
 
                
 // ----------------------------------------
@@ -907,4 +910,15 @@ If nPos > 0
 	lSup := _aDbTypes[nPos][3]
 Endif
 Return lSup
+
+
+// ----------------------------------------
+// Converte um valort decimal de 0 a 255 para Hexadecimal 
+
+STATIC __aHEx := {'0','1','2','3','4','5','6','7','8','9','a','b','c','d','e','f'}
+
+STATIC Function DEC2HEX(nByte)
+Local nL := ( nByte % 16 ) 
+Local nH := ( nByte-nL) / 16 
+Return __aHex[nH+1]+__aHex[nL+1]
 
