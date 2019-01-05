@@ -21,6 +21,9 @@ Observações Embora todas as propriedades sejam públicas, o uso da classe
 			( Porém o desempenho pode ser prejudicado devido ao tráfego 
 			de rede entre APPServer e SmartClient a cada leitura de registro
 
+Release 20190105
+
+
 
 Referências do Formato de Arquivos DBF / DBT / FPT 
 
@@ -53,6 +56,7 @@ CLASS ZDBFTABLE FROM LONGNAMECLASS
   DATA aRecord				// Array com todas as colunas do registro atual 
   DATA lDeleted				// Indicador de registro corrente deletado (marcado para deleção ) 
   DATA nRecno				// Número do registro (RECNO) atualmnete posicionado 
+  DATA bFilter              // Codeblock de filtro 
 
   DATA lBOF					// Flag de inicio de arquivo 
   DATA lEOF					// Flag de final de arquivo 
@@ -87,6 +91,8 @@ CLASS ZDBFTABLE FROM LONGNAMECLASS
   METHOD EOF()				// Retorna .T, caso o final de arquivo tenha sido atingido 
   METHOD Recno()			// Retorna o numero do registro (RECNO) posicionado 
   METHOD Deleted()			// REtorna .T. caso o registro atual esteja DELETADO ( Marcado para deleção ) 
+  METHOD DBSetFilter()      // Permite setar um filtro para os dados 
+  METHOD ClearFilter()      // Limpa o filtro 
 
   METHOD Header() 			// Retorna tamanho em Bytes do Header da Tabela
   METHOD RecSize()			// Retorna o tamanho de um registro da tabela 
@@ -106,6 +112,9 @@ CLASS ZDBFTABLE FROM LONGNAMECLASS
   METHOD _ReadRecord()		// Le um registro do arquivo de dados
   METHOD _ClearRecord()		// Limpa o registro da memoria (EOF por exemplo) 
   METHOD _ReadMemo()        // Recupera um conteudo de campo memo por OFFSET
+  METHOD _CheckFilter()     // Verifica se o registro atual está contemplado no filtro 
+  METHOD _SkipNext()		// Le o proximo registro da tabela 
+  METHOD _SkipPrev()        // Le o registro anterior da tabela 
 
 ENDCLASS
 
@@ -225,6 +234,66 @@ Return
 
 
 // ----------------------------------------------------------
+// Permite setar um filtro para a navegação de dados 
+// Todos os campos devem estar em letras maiusculas 
+
+/*
+
+X3_ARQUIVO => [AA1]
+X3_ORDEM   => [01]
+X3_CAMPO   => [AA1_FILIAL]
+X3_TIPO    => [C]
+X3_TAMANHO => [2]
+X3_DECIMAL => [0]
+X3_TITULO  => [Filial      ]
+X3_TITSPA  => [Sucursal    ]
+X3_TITENG  => [Branch      ]
+
+*/
+
+
+METHOD DBSetFilter( cFilter ) CLASS ZDBFTABLE
+Local aCampos := {}
+Local cTemp
+Local nI, nPos
+
+// Cria lista de campos 
+aEval( ::aStruct , {|x| aadd(aCampos , x[1]) } )
+
+// Ordena pelos maiores campos primeiro 
+aSort( aCampos ,,, {|x,y| alltrim(len(x)) > alltrim(len(y)) } )
+
+// Copia a expressao filtro
+cTemp := cFilter
+
+// Troca os campos por o:Fieldget(nCpo)
+// Exemplo : CAMPO > 123 será trocado para o:FieldGet(1) > 123
+
+For nI := 1 to len(aCampos)
+	cCampo := alltrim(aCampos[nI])
+	nPos := ::Fieldpos(cCampo)
+	cTemp := Strtran( cTemp , cCampo,"o:FieldGet(" +cValToChar(nPos)+ ")")
+Next
+
+// Monta a string com o codeblock para filtro 
+cTemp := "{|o| "+cTemp+"}"
+
+// Monta efetivamente o codeblock 
+::bFilter := &(cTemp)
+
+Return
+
+// ----------------------------------------------------------
+// Limpa a expressao de filtro atual 
+
+METHOD ClearFilter() CLASS ZDBFTABLE 
+::bFilter := NIL
+Return
+
+
+
+
+// ----------------------------------------------------------
 // *** METODO DE USO INTERNO ***
 // Inicializa / Limpa as propriedades padrao do Objeto 
 
@@ -247,6 +316,7 @@ METHOD _ResetVars() CLASS ZDBFTABLE
 ::lDeleted    := .F. 
 ::nRecno      := 0
 ::cMemoType   := ''
+::bFilter     := NIL
 
 Return
 
@@ -465,7 +535,6 @@ Return .T.
 // Posiciona diretamente em um regsitro 
 
 METHOD DBGoTo(nRec)  CLASS ZDBFTABLE
-Local nOffset
 
 // Verifica se o registro é válido 
 // Se não for, vai para EOF
@@ -480,17 +549,7 @@ Endif
 // Atualiza o numero do registro atual 
 ::nRecno := nRec
 
-// ----------------------------------------
-// Calcula o offset deste registro
-
-nOffset := ::nDataPos 
-nOffset += (nRec * ::nRecLength)
-nOffset -= ::nRecLength
-
-// Posiciona no offset 
-FSeek(::nHData , nOffset )
-
-// Traz o registro para a memória
+// Traz o registro atual para a memória
 ::_ReadRecord()
 
 Return
@@ -512,11 +571,14 @@ Endif
 // Atualiza o registro atual
 ::nRecno     := 1
 
-// Posiciona no primeiro registro fisico 
-FSeek(::nHData , ::nDataPos )
-
-// Lê o registro
+// Traz o registro atual para a memória
 ::_ReadRecord()
+
+If ( !::_CheckFilter() )
+	// Nao passou na verificacao do filtro
+	// busca o proximo registro que atenda
+	::_SkipNext()
+Endif
 
 Return
 
@@ -524,7 +586,6 @@ Return
 // Movimenta a tabela para o último registro
 
 METHOD DBGoBottom() CLASS ZDBFTABLE 
-Local nOffset
 
 IF ::nLastRec == 0 
 	// Nao há registros 
@@ -535,17 +596,17 @@ IF ::nLastRec == 0
 	Return
 Endif
 
+// Atualiza o RECNO para o ultimo registro 
 ::nRecno     := ::nLastRec
 
-nOffset := ::nDataPos 
-nOffset += ( ::nRecno * ::nRecLength )
-nOffset -= ::nRecLength
-
-// Posiciona no offset 
-FSeek(::nHData , nOffset )
-
-// Traz o registro para a memória
+// Traz o registro atual para a memória
 ::_ReadRecord()
+
+If ( !::_CheckFilter() )
+	// Nao passou na verificacao do filtro
+	// busca nos registros anteriores o primeiro que atende
+	::_SkipPrev()
+Endif
 
 Return
 
@@ -634,7 +695,17 @@ Return ::nRecno
 METHOD _ReadRecord() CLASS ZDBFTABLE 
 Local cTipo , nTam , cValue
 Local nBuffPos := 2 , nI
-Local cRecord := ''
+Local cRecord := '' , nOffset
+
+// ----------------------------------------
+// Calcula o offset do registro atual baseado no RECNO
+
+nOffset := ::nDataPos 
+nOffset += (::nRecno * ::nRecLength)
+nOffset -= ::nRecLength
+
+// Posiciona o arquivo de dados no offset do registro 
+FSeek(::nHData , nOffset )
 
 // Lê o registro do offset atual 
 FRead(::nHData , @cRecord , ::nRecLength )
@@ -713,9 +784,7 @@ Return
 // Default = 1 ( Próximo Registro ) 
 
 METHOD DbSkip( nQtd ) CLASS ZDBFTABLE 
-Local nRecordMove 
 Local lForward := .T. 
-Local nOffset
 
 If nQtd  == NIL
 	nQtd := 1
@@ -727,46 +796,26 @@ Endif
 // Se for negativa, remove o sinal 
 nQtd := abs(nQtd)
 
-// Parte do registro atual 
-nRecordMove := ::Recno()
-
-While nQtd > 0
-	
+While nQtd > 0 
 	If lForward
-		nRecordMove++
-		If nRecordMove > ::nLastRec
-			::lEOF := .T.
+		IF ::_SkipNext()
+			nQtd--
+		Else
+			// Bateu EOF()
 			::_ClearRecord()
 			Return
 		Endif
 	Else
-		nRecordMove--
-		If nRecordMove < 1
-			::Dbgotop()
-			::lBOF := .T.
+		IF ::_SkipPrev()
+			nQtd--
+		Else
+			// Bateu BOF()
 			Return
 		Endif
 	Endif
-	
-	nQtd--
-	
 Enddo
 
-// ----------------------------------------
-// Atualiza o numero do registro atual 
-::nRecno := nRecordMove
-
-// ----------------------------------------
-// Calcula o offset deste registro no arquivo de dados 
-
-nOffset := ::nDataPos 
-nOffset += (nRecordMove * ::nRecLength)
-nOffset -= ::nRecLength
-
-// Posiciona o arquivo de dados no offset do registro 
-FSeek(::nHData , nOffset )
-
-// Traz o registro do offset atual para a memória
+// Traz o registro atual para a memória
 ::_ReadRecord()
 
 Return
@@ -846,6 +895,97 @@ Endif
 
 Return cMemo
 
+// ----------------------------------------
+// *** METODO DE USO INTERNO ***
+// Verifica se o registro atual está contemplado pelo filtro 
+
+METHOD _CheckFilter() CLASS ZDBFTABLE
+Local lOk := .T. 
+If ::bFilter != NIL 
+	lOk := Eval(::bFilter , self )	
+Endif
+Return lOk
+
+
+// ----------------------------------------
+// *** METODO DE USO INTERNO ***
+// Le e posiciona no proximo registro, considerando filtro 
+
+METHOD _SkipNext() CLASS ZDBFTABLE
+Local nNextRecno
+
+While (!::lEOF)
+
+	// Parte do registro atual , soma 1 
+	nNextRecno := ::Recno() + 1 
+
+	// Passou do final de arquivo, esquece
+	If nNextRecno > ::nLastRec
+		::lEOF := .T.
+		::_ClearRecord()
+		Return .F. 
+	Endif
+
+	// ----------------------------------------
+	// Atualiza o numero do registro atual 
+	::nRecno := nNextRecno
+
+	// Traz o registro atual para a memória
+	::_ReadRecord()
+
+	// Passou na checagem de filtro ? Tudo certo 
+	// Senao , continua lendo ate achar um registro valido 
+	If ::_CheckFilter()
+		Return .T. 
+	Endif
+
+Enddo
+
+Return .F. 
+
+// ----------------------------------------
+// *** METODO DE USO INTERNO ***
+// Le e posiciona no registro anmterior, considerando filtro 
+
+METHOD _SkipPrev() CLASS ZDBFTABLE
+Local nPrevRecno
+
+While (!::lBOF)
+
+	// Parte do registro atual , subtrai 1
+	nPrevRecno := ::Recno() - 1 
+
+	// Tentou ler antes do primeiro registro 
+	// Bateu em BOF()
+	If nPrevRecno < 1 
+		::lBOF := .T.
+		Return .F. 
+	Endif
+
+	// ----------------------------------------
+	// Atualiza o numero do registro atual 
+	::nRecno := nPrevRecno
+
+	// Traz o registro atual para a memória
+	::_ReadRecord()
+
+	// Passou na checagem de filtro ? Tudo certo 
+	// Senao , continua lendo ate achar um registro valido 
+	If ::_CheckFilter()
+		Return .T. 
+	Endif
+
+Enddo
+
+// Chegou no topo. 
+// Se tem filtro, e o registro nao entra no filtro, localiza 
+// o primeir registro válido 
+If ( !::_CheckFilter() )
+	::DBGoTop()
+	::lBOF := .T. 
+Endif
+
+Return .F. 
 
 // =================================================
 // Funcoes Auxiliares internas da classe 
