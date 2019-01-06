@@ -17,6 +17,7 @@ CLASS ZDBFMEMINDEX
    DATA bIndexBlock
    DATA aIndexData
    DATA nCurrentRow
+   DATA lSetResync
 
    METHOD NEW(oDBF)
    METHOD CREATEINDEX(cIndexExpr)
@@ -29,10 +30,12 @@ CLASS ZDBFMEMINDEX
    
    METHOD GetIndexExpr()
    METHOD GetIndexValue()
+   METHOD GetIndexRecno()
    METHOD IndexSeek()
    
    METHOD _BuildIndexBlock(cIndexExpr)
-   METHOD _Sync()
+   METHOD _CheckSync()
+   METHOD SetResync()
 
 ENDCLASS
 
@@ -46,13 +49,56 @@ METHOD NEW(oDBF) CLASS ZDBFMEMINDEX
 ::bIndexBlock := NIL
 ::aIndexData := {}
 ::nCurrentRow := 0
+::lSetResync := .F. 
 Return self
 
 // ----------------------------------------
-// *** METODO DE USO INTERNO ***
+// Chamado pela ZDBFTABLE para indicar que o registro ou chave atuais 
+// precisam ser resincronizados devido a mudança de indice ativo
+// ou reposicionamento de registro direto por DBGoto()
+METHOD SetResync() CLASS ZDBFMEMINDEX
+::lSetResync := .T. 
+Return
 
-METHOD _Sync() CLASS ZDBFMEMINDEX
-conout("[TODO] ZDBFMEMINDEX:_Sync()")
+// ----------------------------------------
+// *** METODO DE USO INTERNO ***
+// Verifica se existe sincronismo pendente antes de fazer uma movimentacao 
+// Caso tenha, efetua o sincronismo da posicao do indice com a posicao do RECNO 
+
+METHOD _CheckSync() CLASS ZDBFMEMINDEX
+Local cKey, nKey 
+
+If ::lSetResync
+
+	// Desliga flag de resync
+	::lSetResync := .F. 
+
+	// Pega o valor da chave baseado no RECNO posicionado no DBF
+	// e o numero do recno posicionado no DBF 
+	cKey := ::GetIndexValue()
+	nKey := ::oDBF:Recno()
+
+	IF  ::aIndexData[::nCurrentRow][2] != nKey .OR. ;
+		::aIndexData[::nCurrentRow][1] != cKey
+	   
+		// Se a chave da posicao do indice ou o RECNO 
+		// da posicao do indice estao diferentes, 
+		// precisa resincronizar a posical do indice
+
+		If !::IndexSeek(cKey,nKey)		
+
+		    // Uma sincronizacao de indice NUNCA pode falhar
+			// Eu estou buscando no indice a chave atualmente 
+			// posicionada no arquivo. Se eu nao achei, 
+			// o indice nao esta sincronizado com o arquivo 
+			
+			UserException("*** INDEX RESYNC FAILED ***")
+		Endif
+		
+	Endif
+
+Endif
+
 Return
 
 // ----------------------------------------
@@ -153,6 +199,7 @@ Return 0
 
 METHOD GetPrevRec() CLASS ZDBFMEMINDEX
 If Len(::aIndexData) > 0 .and. ::nCurrentRow > 1
+	::_CheckSync()
 	::nCurrentRow--
 	Return ::aIndexData[::nCurrentRow][2]
 Endif
@@ -165,6 +212,7 @@ Return 0
 
 METHOD GetNextRec() CLASS ZDBFMEMINDEX
 If ::nCurrentRow < Len(::aIndexData)
+	::_CheckSync()
 	::nCurrentRow++
 	Return ::aIndexData[::nCurrentRow][2]
 Endif
@@ -186,24 +234,36 @@ Return 0
 METHOD GetIndexExpr() CLASS ZDBFMEMINDEX
 return ::cIndexExpr
 
-
 // ----------------------------------------
 // REtorna o valor da chave de indice do registro atual 
+// Que a tabela esta posicionada 
 // Em AdvPL, seria o equivalente a &(Indexkey())
 
 METHOD GetIndexValue() CLASS ZDBFMEMINDEX
 Return Eval( ::bIndexBlock , ::oDBF )
 
 // ----------------------------------------
+// REtorna o numero do RECNO da posição de indice atual 
+
+METHOD GetIndexRecno() CLASS ZDBFMEMINDEX
+Return ::aIndexData[::nCurrentRow][2]
+
+
+// ----------------------------------------
 // Realiza uma busca exata pela chave de indice informada 
 // Leva em consideração chaves repetidas buscando 
-// pelo menor RECNO neste caso 
+// pelo menor RECNO neste caso. Caso tenha recebido um RECNO
+// está sendo chamado para fazer sincronismo da chave
 
-METHOD IndexSeek(cSeekKey) CLASS ZDBFMEMINDEX
+METHOD IndexSeek(cSeekKey,nRecno) CLASS ZDBFMEMINDEX
 Local nTop := 1 
 Local nBottom := Len(::aIndexData)
-Local nMid 
+Local nMiddle 
 Local lFound := .F. 
+
+IF nRecno = NIL 
+	nRecno := 0 
+Endif
 
 If nBottom > 0
 
@@ -220,35 +280,70 @@ If nBottom > 0
 	While nBottom >= nTop
 
 		// Procura o meio dos dados ordenados
-		nMid := Int( ( nTop + nBottom ) / 2 )
+		nMiddle := Int( ( nTop + nBottom ) / 2 )
 		
-		If cSeekKey < ::aIndexData[nMid][1]
+		If cSeekKey < ::aIndexData[nMiddle][1]
 			// Chave menor, desconsidera daqui pra baixo 
-			nBottom := nMid-1
-		ElseIf cSeekKey > ::aIndexData[nMid][1]
+			nBottom := nMiddle-1
+		ElseIf cSeekKey > ::aIndexData[nMiddle][1]
 			// Chave maior, desconsidera daqui pra cima
-			nTop := nMid+1
-		Else
-			// Nao é maior nem menor .. achou ! 
-			lFound := .T. 
-			EXIT
+			nTop := nMiddle+1
+		Else    
+			If nRecno > 0  
+				// Foi informado RECNO 
+				// Sincronismo do indice com o registro 
+				// posicionado na tabela. Busca o RECNO 
+				If nRecno < ::aIndexData[nMiddle][2]
+					// RECNO menor, desconsidera daqui pra baixo 
+					nBottom := nMiddle-1
+				ElseIf nRecno > ::aIndexData[nMiddle][2]
+					// RECNO maior, desconsidera daqui pra cima
+					nTop := nMiddle+1
+				Else    
+					// ACHOU a chave completa 
+					lFound := .T. 
+					EXIT
+				Endif
+			Else
+				// Nao é maior nem menor .. achou ! 
+				lFound := .T. 
+				EXIT
+			Endif
 		Endif
 	
 	Enddo
 
 	If lFound
 
-		// Ao encontrar uma chave, busca pelo menor RECNO 
-		// entre chaves repetidas
+		If nRecno > 0 
 
-		While cSeekKey == ::aIndexData[nMid][1]
-			nMid--
-			If nMid == 0 
-				EXIT
-			Endif
-		Enddo
+			// Foi informado RECNO 
+			// Busca para sincronizar o indice baseado no movimento 
+			// direto do registro na tabela ( dbgoto por exemplo ) 
+			// A chave procurada é essa mesmo. 
+			::nCurrentRow := nMiddle
+		
+		Else
+		
+			// Nao foi informado RECNO 
+			// Ao encontrar uma chave, busca pelo menor RECNO 
+			// entre chaves repetidas, do ponto atual para cima
+			// enquanto a chave de busca for a mesma
+	
+			While cSeekKey == ::aIndexData[nMiddle][1]
+				nMiddle--
+				If nMiddle == 0 
+					EXIT
+				Endif
+			Enddo
 
-		Return ::aIndexData[nMid+1][2]
+			// A posicao encontrada é a próxima, onde a 
+			// chave ainda era igual 
+			::nCurrentRow := nMiddle+1
+
+		Endif
+
+		Return ::aIndexData[::nCurrentRow][2]
 
 	Endif
 	
@@ -261,10 +356,12 @@ Return 0
 // limpa flags e dados da memoria
 
 METHOD CLOSE() CLASS ZDBFMEMINDEX
+
 ::oDBF := NIL
 ::cIndexExpr := ''
 ::bIndexBlock := NIL
 ::nCurrentRow := 0
+::lSetResync := .F. 
 
 aSize( ::aIndexData,0 )
 

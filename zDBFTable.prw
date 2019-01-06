@@ -594,7 +594,7 @@ Endif
 If ::nIndexOrd > 0 
 	// Eu tenho indice ativo, sincroniza a posicao do indice 
 	// com a posicao do registro atual 
-	::oCurrentIndex:_Sync()
+	::oCurrentIndex:SetResync()
 Endif
 
 // Traz o registro atual para a memória
@@ -1080,12 +1080,12 @@ Return .F.
 
 METHOD DbSetOrder(nOrd) CLASS ZDBFTABLE
 If nOrd < 0 .OR.  nOrd > len( ::aIndexes )
-	UserException("Invalid Order "+cValToChar(nOrd))
+	UserException("DbSetOrder - Invalid Order "+cValToChar(nOrd))
 Endif
 ::nIndexOrd := nOrd
 If ::nIndexOrd > 0 
 	::oCurrentIndex := ::aIndexes[::nIndexOrd]
-	::oCurrentIndex:_Sync()
+	::oCurrentIndex:SetResync()
 Else
 	::oCurrentIndex := NIL
 Endif
