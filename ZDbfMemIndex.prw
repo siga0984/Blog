@@ -281,14 +281,15 @@ If nBottom > 0
 
 		// Procura o meio dos dados ordenados
 		nMiddle := Int( ( nTop + nBottom ) / 2 )
+
+		If ::aIndexData[nMiddle][1] = cSeekKey
 		
-		If cSeekKey < ::aIndexData[nMiddle][1]
-			// Chave menor, desconsidera daqui pra baixo 
-			nBottom := nMiddle-1
-		ElseIf cSeekKey > ::aIndexData[nMiddle][1]
-			// Chave maior, desconsidera daqui pra cima
-			nTop := nMiddle+1
-		Else    
+			// Operador de igualdade ao comparar a chave do indice 
+			// com a chave informada para Busca. O Advpl opr default 
+			// considera que ambas sao iguais mesmo que a chave de busca
+			// seja menor, desde que os caracteres iniciais até o tamanho da 
+			// chave de busca sejam iguais. 
+		
 			If nRecno > 0  
 				// Foi informado RECNO 
 				// Sincronismo do indice com o registro 
@@ -309,6 +310,13 @@ If nBottom > 0
 				lFound := .T. 
 				EXIT
 			Endif
+
+		ElseIf cSeekKey < ::aIndexData[nMiddle][1]
+			// Chave menor, desconsidera daqui pra baixo 
+			nBottom := nMiddle-1
+		ElseIf cSeekKey > ::aIndexData[nMiddle][1]
+			// Chave maior, desconsidera daqui pra cima
+			nTop := nMiddle+1
 		Endif
 	
 	Enddo
@@ -328,9 +336,11 @@ If nBottom > 0
 			// Nao foi informado RECNO 
 			// Ao encontrar uma chave, busca pelo menor RECNO 
 			// entre chaves repetidas, do ponto atual para cima
-			// enquanto a chave de busca for a mesma
+			// enquanto a chave de busca for a mesma. 
+			// Compara sempre a chave do indice com a chave de busca
+			// com igualdade simples 
 	
-			While cSeekKey == ::aIndexData[nMiddle][1]
+			While ::aIndexData[nMiddle][1] = cSeekKey
 				nMiddle--
 				If nMiddle == 0 
 					EXIT
