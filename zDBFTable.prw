@@ -21,7 +21,13 @@ Observações Embora todas as propriedades sejam públicas, o uso da classe
 			( Porém o desempenho pode ser prejudicado devido ao tráfego 
 			de rede entre APPServer e SmartClient a cada leitura de registro
 
+
 Release 20190105
+- Implementação de filtro -- DbSetFilter e DBCleanFilter()
+
+Release 20190106 
+- Implementação de indice em memória 
+- Implementação de filtro de registros deletados
 
 
 
@@ -36,6 +42,7 @@ http://www.independent-software.com/dbase-dbf-dbt-file-format.html
 http://web.tiscali.it/SilvioPitti/
 http://www.idea2ic.com/File_Formats/DBF%20FILE%20STRUCTURE.pdf
 http://www.oocities.org/geoff_wass/dBASE/GaryWhite/dBASE/FAQ/qformt.htm
+http://www.dbfree.org/webdocs/1-documentation/a-about_indexes.htm
 
 =========================================================================== */
 
@@ -55,8 +62,13 @@ CLASS ZDBFTABLE FROM LONGNAMECLASS
   DATA nFldCount			// Quantidade de campos do arquivo 
   DATA aRecord				// Array com todas as colunas do registro atual 
   DATA lDeleted				// Indicador de registro corrente deletado (marcado para deleção ) 
+  DATA lSetDeleted          // Filtro de registros deletados ativo 
   DATA nRecno				// Número do registro (RECNO) atualmnete posicionado 
   DATA bFilter              // Codeblock de filtro 
+
+  DATA nIndexOrd            // Ordem de indice atual 
+  DATA aIndexes             // Array com objetos de indice 
+  DATA oCurrentIndex        // Objeto do indice atual 
 
   DATA lBOF					// Flag de inicio de arquivo 
   DATA lEOF					// Flag de final de arquivo 
@@ -92,7 +104,15 @@ CLASS ZDBFTABLE FROM LONGNAMECLASS
   METHOD Recno()			// Retorna o numero do registro (RECNO) posicionado 
   METHOD Deleted()			// REtorna .T. caso o registro atual esteja DELETADO ( Marcado para deleção ) 
   METHOD DBSetFilter()      // Permite setar um filtro para os dados 
-  METHOD ClearFilter()      // Limpa o filtro 
+  METHOD DBClearFilter()    // Limpa o filtro 
+  METHOD SetDeleted()       // Liga ou desliga filtro de registros deletados
+
+  METHOD DbSetOrder()       
+  METHOD IndexOrd()
+  METHOD IndexKey()
+  METHOD IndexValue()
+  METHOD DBSeek(cKeyExpr)
+  METHOD _AddIndex(oIndex)
 
   METHOD Header() 			// Retorna tamanho em Bytes do Header da Tabela
   METHOD RecSize()			// Retorna o tamanho de um registro da tabela 
@@ -219,6 +239,7 @@ Return .T.
 // A tabela pode ser aberta novamente pela mesma instancia 
 
 METHOD CLOSE() CLASS ZDBFTABLE 
+Local nI
 
 If ::nHData <> -1
 	fClose(::nHData)
@@ -227,6 +248,12 @@ Endif
 If ::nHMemo <> -1
 	fClose(::nHMemo)
 Endif
+
+For nI := 1 to len(::aIndexes)
+	::oCurrentIndex := ::aIndexes[nI]
+	::oCurrentIndex:Close()
+	FreeObj(::oCurrentIndex)
+Next
 
 ::_ResetVars()
 
@@ -286,9 +313,20 @@ Return
 // ----------------------------------------------------------
 // Limpa a expressao de filtro atual 
 
-METHOD ClearFilter() CLASS ZDBFTABLE 
+METHOD DBClearFilter() CLASS ZDBFTABLE 
 ::bFilter := NIL
 Return
+
+// ----------------------------------------------------------
+// Permite ligar filtro de navegação de registros deletados
+// Defaul = desligado
+
+METHOD SetDeleted( lSet ) CLASS ZDBFTABLE 
+Local lOldSet := ::lSetDeleted
+If pCount() > 0 
+	::lSetDeleted := lSet
+Endif
+Return lOldSet
 
 
 
@@ -314,9 +352,13 @@ METHOD _ResetVars() CLASS ZDBFTABLE
 ::nFldCount   := 0
 ::aRecord     := {}
 ::lDeleted    := .F. 
+::lSetDeleted := .F. 
 ::nRecno      := 0
 ::cMemoType   := ''
 ::bFilter     := NIL
+::nIndexOrd   := 0
+::aIndexes    := {}
+::oCurrentIndex := {}
 
 Return
 
@@ -549,6 +591,12 @@ Endif
 // Atualiza o numero do registro atual 
 ::nRecno := nRec
 
+If ::nIndexOrd > 0 
+	// Eu tenho indice ativo, sincroniza a posicao do indice 
+	// com a posicao do registro atual 
+	::oCurrentIndex:_Sync()
+Endif
+
 // Traz o registro atual para a memória
 ::_ReadRecord()
 
@@ -556,6 +604,7 @@ Return
 
 // ----------------------------------------------------------
 // Movimenta a tabela para o primeiro registro 
+// Release 20190105 : Contempla uso de indice
 
 METHOD DBGoTop() CLASS ZDBFTABLE 
 
@@ -568,8 +617,15 @@ IF ::nLastRec == 0
 	Return
 Endif
 
-// Atualiza o registro atual
-::nRecno     := 1
+If ::nIndexOrd > 0 
+	// Se tem indice ativo, pergunta pro indice
+	// quanl é o primeiro registro da ordem 
+	::nRecno := ::oCurrentIndex:GetFirstRec()
+Else
+	// Ordem fisica 
+	// Atualiza para o primeiro registtro 
+	::nRecno     := 1
+Endif
 
 // Traz o registro atual para a memória
 ::_ReadRecord()
@@ -596,8 +652,15 @@ IF ::nLastRec == 0
 	Return
 Endif
 
-// Atualiza o RECNO para o ultimo registro 
-::nRecno     := ::nLastRec
+If ::nIndexOrd > 0 
+	// Se tem indice ativo, pergunta pro indice
+	// quanl é o primeiro registro da ordem 
+	::nRecno := ::oCurrentIndex:GetLastRec()
+Else
+	// Ordem fisica 
+	// Atualiza o RECNO para o ultimo registro 
+	::nRecno     := ::nLastRec
+Endif
 
 // Traz o registro atual para a memória
 ::_ReadRecord()
@@ -731,8 +794,7 @@ For nI := 1 to ::nFldCount
 		::aRecord[nI] := val(cValue)
 		nBuffPos += nTam
 	ElseIf cTipo == 'D'
-		// Por hora le como caractere
-		::aRecord[nI] := cValue
+		::aRecord[nI] := STOD(cValue)
 		nBuffPos += nTam
 	ElseIf cTipo == 'L'
 		::aRecord[nI] := ( cValue=='T' )
@@ -898,14 +960,24 @@ Return cMemo
 // ----------------------------------------
 // *** METODO DE USO INTERNO ***
 // Verifica se o registro atual está contemplado pelo filtro 
+// Release 20190106 -- Contempla filtro de registros deletados
 
 METHOD _CheckFilter() CLASS ZDBFTABLE
-Local lOk := .T. 
-If ::bFilter != NIL 
-	lOk := Eval(::bFilter , self )	
-Endif
-Return lOk
 
+If ::lSetDeleted .AND. ::lDeleted
+	// Filtro de deletados está ligado 
+	// e este registro está deletado .. ignora
+	Return .F. 
+Endif
+
+If ::bFilter != NIL 
+	// Existe uma expressao de filtro 
+	// Roda a expressão para saber se este registro 
+	// deve estar  "Visivel" 
+	Return Eval(::bFilter , self )	
+Endif
+
+Return .T. 
 
 // ----------------------------------------
 // *** METODO DE USO INTERNO ***
@@ -916,11 +988,19 @@ Local nNextRecno
 
 While (!::lEOF)
 
-	// Parte do registro atual , soma 1 
-	nNextRecno := ::Recno() + 1 
-
+	If ::nIndexOrd > 0 
+		// Se tem indice ativo, pergunta pro indice
+		// qual é o próximo registro
+		nNextRecno := ::oCurrentIndex:GetNextRec()
+	Else
+		// Estou na ordem fisica
+		// Parte do registro atual , soma 1 
+		nNextRecno := ::Recno() + 1 
+	Endif
+	
+	// Retornou ZERO ou 
 	// Passou do final de arquivo, esquece
-	If nNextRecno > ::nLastRec
+	If nNextRecno == 0 .OR. nNextRecno > ::nLastRec
 		::lEOF := .T.
 		::_ClearRecord()
 		Return .F. 
@@ -952,9 +1032,16 @@ Local nPrevRecno
 
 While (!::lBOF)
 
-	// Parte do registro atual , subtrai 1
-	nPrevRecno := ::Recno() - 1 
-
+	If ::nIndexOrd > 0 
+		// Se tem indice ativo, pergunta pro indice
+		// qual é o registro anterior
+		nPrevRecno := ::oCurrentIndex:GetPrevRec()
+	Else
+		// Estou na ordem fisica
+		// Parte do registro atual , subtrai 1
+		nPrevRecno := ::Recno() - 1 
+    Endif
+    
 	// Tentou ler antes do primeiro registro 
 	// Bateu em BOF()
 	If nPrevRecno < 1 
@@ -986,6 +1073,74 @@ If ( !::_CheckFilter() )
 Endif
 
 Return .F. 
+
+// ----------------------------------------
+// Permite trocar a ordedm atual usando 
+// um indice aberto 
+
+METHOD DbSetOrder(nOrd) CLASS ZDBFTABLE
+If nOrd < 0 .OR.  nOrd > len( ::aIndexes )
+	UserException("Invalid Order "+cValToChar(nOrd))
+Endif
+::nIndexOrd := nOrd
+If ::nIndexOrd > 0 
+	::oCurrentIndex := ::aIndexes[::nIndexOrd]
+	::oCurrentIndex:_Sync()
+Else
+	::oCurrentIndex := NIL
+Endif
+Return
+
+// ----------------------------------------
+// Retorna o numero da ordem do indce ativo 
+
+METHOD IndexOrd() CLASS ZDBFTABLE
+Return ::nIndexOrd
+
+// ----------------------------------------
+// Retorna a expressao da chave de indice atual 
+// Caso nao haja indice ativo, retorna ""
+
+METHOD IndexKey() CLASS ZDBFTABLE
+IF ::nIndexOrd > 0 
+	Return ::oCurrentIndex:GetIndexExpr()
+Endif
+Return ""
+
+// ----------------------------------------
+// Retorna o numero da ordem do indce ativo 
+METHOD IndexValue() CLASS ZDBFTABLE
+IF ::nIndexOrd > 0 
+	Return ::oCurrentIndex:GetIndexValue()
+Endif
+Return NIL
+
+
+// ----------------------------------------
+// Retorna o numero da ordem do indce ativo 
+METHOD DBSeek(cKeyExpr) CLASS ZDBFTABLE
+Local nRecFound := 0
+IF ::nIndexOrd <= 0
+	UserException("DBSeek Failed - No active Index")
+Endif
+nRecFound := ::oCurrentIndex:IndexSeek(cKeyExpr)
+If nRecFound > 0
+	::DbGoto(nRecFound)
+	Return .T.
+Endif
+::lEOF := .T.
+::_ClearRecord()
+Return .F.
+	
+  
+// ----------------------------------------
+// *** METODO DE USO INTERNO ***
+// Acrescenta um objeto de indice na lista de indices abertos
+
+METHOD _AddIndex(oIndex)  CLASS ZDBFTABLE
+aadd(::aIndexes,oIndex)
+::nIndexOrd := len(::aIndexes)
+Return
 
 // =================================================
 // Funcoes Auxiliares internas da classe 
@@ -1061,4 +1216,12 @@ STATIC Function DEC2HEX(nByte)
 Local nL := ( nByte % 16 ) 
 Local nH := ( nByte-nL) / 16 
 Return __aHex[nH+1]+__aHex[nL+1]
+
+// ----------------------------------------
+// Converte data no formato AAAAMMDD para Data do AdvPL 
+STATIC Function STOD(cValue)
+Local cOldSet := Set(_SET_DATEFORMAT, 'yyyy:mm:dd')
+Local dRet := CTOD(Substr(cValue,1,4)+":"+Substr(cValue,5,2)+":"+Substr(cValue,7,2))
+Set(_SET_DATEFORMAT, cOldSet)
+Return dRet
 
