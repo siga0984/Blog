@@ -12,36 +12,36 @@ Descrição   A partir de um objeto ZDBFTABLE, permite
 
 CLASS ZDBFMEMINDEX
 
-   DATA oDBF
-   DATA cIndexExpr
-   DATA bIndexBlock
-   DATA aIndexData
-   DATA aRecnoData
-   DATA nCurrentRow
-   DATA lSetResync
+   DATA oDBF			// Objeto ZDBFTABLE relacionado ao índice 
+   DATA cIndexExpr      // Expressão AdvPL original do índice
+   DATA bIndexBlock     // CodeBlock para montar uma linha de dados do índice
+   DATA aIndexData      // Array com os dados do índice ordenado pela chave 
+   DATA aRecnoData      // Array com os dados do índice ordenado pelo RECNO 
+   DATA nCurrentRow     // Numero da linha atual do índice 
+   DATA lSetResync      // Flag de resincronismo pendente da posição do índice
    DATA lVerbose
 
-   METHOD NEW(oDBF)
-   METHOD CREATEINDEX(cIndexExpr)
-   METHOD CLOSE()
+   METHOD NEW(oDBF)     // Cria o objeto do índice
+   METHOD CREATEINDEX(cIndexExpr) // Cria o índice baseado na chave fornecida 
+   METHOD CLOSE()       // Fecha o índice e limpa os dados da memória 
 
-   METHOD GetFirstRec()
-   METHOD GetPrevRec()
-   METHOD GetNextRec()
-   METHOD GetLastRec()
+   METHOD GetFirstRec() // Retorna o RECNO do primeiro registro do índice
+   METHOD GetPrevRec()  // Retorna o RECNO do Registro anterior do índice
+   METHOD GetNextRec()  // Retorna o RECNO do próximo registro do índice
+   METHOD GetLastRec()  // Retorna o RECNO do último registro do índice 
    
-   METHOD GetIndexExpr()
-   METHOD GetIndexValue()
-   METHOD GetIndexRecno()
-   METHOD IndexSeek()
-   METHOD RecordSeek()
-   METHOD UpdateKey()
+   METHOD GetIndexExpr()  // Rertorna a expressão de indexação 
+   METHOD GetIndexValue() // Retorna o valor da chave de indice do registro atual 
+   METHOD GetIndexRecno() // REtorna o numero do RECNO da posição do índice atual 
+   METHOD IndexSeek()     // Realiza uma busca ordenada por um valor informado 
+   METHOD RecordSeek()    // REaliza uma busca no indice pelo RECNO 
+   METHOD UpdateKey()     // Atualiza uma chave de indice ( em implementação ) 
    
-   METHOD _BuildIndexBlock(cIndexExpr)
-   METHOD _CheckSync()
-   METHOD SetResync()
-   METHOD SetVerbose()
-
+   METHOD _BuildIndexBlock(cIndexExpr) // Cria o codeblock da chave de indice 
+   METHOD _CheckSync()    // Verifica a necessidade de sincronizar o indice 
+   METHOD SetResync()     // Seta flag de resincronismo pendente
+   METHOD SetVerbose()    // Seta modo verbose com echo em console ( em implementação 
+   
 ENDCLASS
 
 // ----------------------------------------
@@ -162,11 +162,9 @@ METHOD CREATEINDEX( cIndexExpr ) CLASS ZDBFMEMINDEX
 ::aRecnoData := {}
 
 // Coloca a tabela em ordem de regisrtros para a criação do indice
-::oDBF:DbSetORder(0)
-::oDBF:DBClearFilter()
-::oDBF:DbGoTop()
-
-conout("["+time()+"] Lendo dados para criar o indice" )
+::oDBF:SetOrder(0)
+::oDBF:ClearFilter()
+::oDBF:GoTop()
 
 While !::oDBF:Eof()
 	// Array de dados 
@@ -174,10 +172,8 @@ While !::oDBF:Eof()
 	// [2] RECNO
 	// [3] Numero do elemento do array aIndexData que contém este RECNO
 	aadd( ::aIndexData , { Eval( ::bIndexBlock , ::oDBF ) , ::oDBF:Recno() , NIL } )
-	::oDBF:DbSkip()
+	::oDBF:Skip()
 Enddo
-
-conout("["+time()+"] Ordenando em memória pela chave " )
 
 // Sorteia pela chave de indice, usando o RECNO como criterio de desempate
 // Duas chaves iguais, prevalesce a ordem fisica ( o menor recno vem primeiro )
@@ -194,11 +190,7 @@ aEval( ::aIndexData , {| x,y| x[3] := y })
 // este array pelo RECNO
 ::aRecnoData := Array(len(::aIndexData))
 aEval(::aIndexData , {|x,y| ::aRecnoData[y] := x })
-
-conout("["+time()+"] Ordenando em memória pelo RECNO " )
 aSort( ::aRecnoData ,,, { |x,y| x[2] < y[2] } )
-
-conout("["+time()+"] Finalizado" )
 
 Return .T.
 
@@ -208,6 +200,7 @@ Return .T.
 
 METHOD GetFirstRec() CLASS ZDBFMEMINDEX
 If Len(::aIndexData) > 0
+	::_CheckSync()
 	::nCurrentRow := 1
 	Return ::aIndexData[::nCurrentRow][2]
 Endif
@@ -245,6 +238,7 @@ Return 0
 
 METHOD GetLastRec() CLASS ZDBFMEMINDEX
 If Len(::aIndexData) > 0
+	::_CheckSync()
 	::nCurrentRow := Len(::aIndexData)
 	Return ::aIndexData[::nCurrentRow][2]
 Endif
