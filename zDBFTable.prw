@@ -1,4 +1,5 @@
-#include  'protheus.ch'
+#include 'protheus.ch'
+#include 'fileio.ch'
 
 /* ===========================================================================
 
@@ -50,6 +51,7 @@ CLASS ZDBFTABLE FROM LONGNAMECLASS
 
   DATA cDataFile			// Nome do arquivo de dados
   DATA cMemoFile			// Nome do arquivo memo (DBT/FPT) 
+  DATA lOpened              // Indica se o arquivo está aberto 
 
   DATA cDBFType				// Identificador hexadecimal do tipo do DBF 
   DATA dLastUpd				// Data registrada dentro do arquivo como ultimo UPDATE 
@@ -60,11 +62,16 @@ CLASS ZDBFTABLE FROM LONGNAMECLASS
   DATA cMemoType			// Identificador (extensao) do tipo do campo MEMO
   DATA nFileSize 			// Tamanho total do arquivo em bytes 
   DATA nFldCount			// Quantidade de campos do arquivo 
-  DATA aRecord				// Array com todas as colunas do registro atual 
+  DATA aGetRecord				// Array com todas as colunas do registro atual 
+  DATA aPutRecord           // Array com campos para update 
+  DATA lExclusive           // Arquivo aberto em modo exclusivo ?
+  DATA lCanWrite            // Arquivo aberto para gravacao 
+  DATA lUpdPend             // Flag indicando update pendente 
   DATA lDeleted				// Indicador de registro corrente deletado (marcado para deleção ) 
   DATA lSetDeleted          // Filtro de registros deletados ativo 
   DATA nRecno				// Número do registro (RECNO) atualmnete posicionado 
   DATA bFilter              // Codeblock de filtro 
+  DATA lVerbose             // Classe DBF em modo "verbose" com echo no console
 
   DATA nIndexOrd            // Ordem de indice atual 
   DATA aIndexes             // Array com objetos de indice 
@@ -85,34 +92,42 @@ CLASS ZDBFTABLE FROM LONGNAMECLASS
   METHOD NEW(cFile)			// Construtor 
   METHOD OPEN()				// Abertura da tabela 
   METHOD CLOSE()			// Fecha a tabela 
+  METHOD EXISTS()           // Verifica se a tabela existe 
+  METHOD CREATE()           // Cria a tabela no disco 
 
   METHOD GetDBType()		// REtorna identificador hexadecimal do tipo da tabela 
   METHOD GetDBTypeStr() 	// Retorna string identificando o tipo da tabela 
 
   METHOD Lastrec()			// Retorna o total de registros / numero do ultimo registro da tabela 
   METHOD RecCount()			// Retorna o total de registros / numero do ultimo registro da tabela 
-  METHOD DbStruct()			// Retorna CLONE da estrutura de dados da tabela 
-  METHOD DBGoTo(nRec)		// Posiciona em um registro informado. 
-  METHOD DBGoTop()			// Posiciona no RECNO 1 da tabela 
-  METHOD DBGoBottom()   	// Posiciona em LASTREC da tabela 
-  METHOD DbSkip( nQtd )     // Navega para frente ou para tráz uma quantidade de registros 
+  METHOD GetStruct()		// Retorna CLONE da estrutura de dados da tabela 
+  METHOD GoTo(nRec)		// Posiciona em um registro informado. 
+  METHOD GoTop()			// Posiciona no RECNO 1 da tabela 
+  METHOD GoBottom()   	// Posiciona em LASTREC da tabela 
+  METHOD Skip( nQtd )     // Navega para frente ou para tráz uma quantidade de registros 
   METHOD FieldGet( nPos )   // Recupera o conteudo da coluna informada do registro atual 
+  METHOD FieldPut( nPos )   // Faz update em uma coluna do registro atual 
   METHOD FieldName( nPos )	// Recupera o nome da coluna informada 
   METHOD FieldPos( cField ) // Retorna a posicao de um campo na estrutura da tabela ( ID da Coluna )
+  METHOD FileName()         // Retorna nome do arquivo aberto 
+  METHOD FCount()           // Retorna o numero de campo / colunas da tabela
   METHOD BOF()				// Retorna .T. caso tenha se tentado navegar antes do primeiro registro 
   METHOD EOF()				// Retorna .T, caso o final de arquivo tenha sido atingido 
   METHOD Recno()			// Retorna o numero do registro (RECNO) posicionado 
   METHOD Deleted()			// REtorna .T. caso o registro atual esteja DELETADO ( Marcado para deleção ) 
-  METHOD DBSetFilter()      // Permite setar um filtro para os dados 
-  METHOD DBClearFilter()    // Limpa o filtro 
+  METHOD SetFilter()      // Permite setar um filtro para os dados 
+  METHOD ClearFilter()    // Limpa o filtro 
   METHOD SetDeleted()       // Liga ou desliga filtro de registros deletados
+  
+  METHOD Insert()           // Insere um registro em branco no final da tabela
+  METHOD Update()           // Atualiza o registro atual na tabela 
 
-  METHOD DbSetOrder()       
-  METHOD IndexOrd()
-  METHOD IndexKey()
-  METHOD IndexValue()
-  METHOD DBSeek(cKeyExpr)
-  METHOD _AddIndex(oIndex)
+  METHOD SetOrder()         // Seta um indice / ordem ativa 
+  METHOD IndexOrd()         // Retorna a ordem ativa
+  METHOD IndexKey()         // Retorna a expressao de indice ativa 
+  METHOD IndexValue()       // Retorna o valor da chave de indice do registro atual 
+  METHOD Seek(cKeyExpr)     // Realiza uma busca usando o indice ativo 
+  METHOD CreateIndex()      // Cria um Indice ( em memoria ) para a tabela 
 
   METHOD Header() 			// Retorna tamanho em Bytes do Header da Tabela
   METHOD RecSize()			// Retorna o tamanho de um registro da tabela 
@@ -121,14 +136,16 @@ CLASS ZDBFTABLE FROM LONGNAMECLASS
   METHOD GetError() 		// Retorna o Codigo e Descricao por referencia do ultimo erro 
   METHOD GetErrorCode()     // Retorna apenas oCodigo do ultimo erro ocorrido
   METHOD GetErrorStr()		// Retorna apenas a descrição do último erro ocorrido
+  METHOD SetVerbose()       // Liga ou desliga o modo "verbose" da classe
 
   // ========================= Metodos de uso interno da classe
 
   METHOD _ResetError()		// Limpa a ultima ocorrencia de erro 
   METHOD _SetError()        // Seta uma nova ocorrencia de erro 
-  METHOD _ResetVars() 		// Inicializa propriedades do Objeto, no construtor e no CLOSE
+  METHOD _InitVars() 		// Inicializa propriedades do Objeto, no construtor e no CLOSE
   METHOD _ReadHeader()		// Lê o Header do arquivo  de dados
   METHOD _ReadStruct()		// Lê a estrutura do arquivo de dados 
+  METHOD _SetLUpdate()      // Atualiza data do Last Update no Header do Arquivo 
   METHOD _ReadRecord()		// Le um registro do arquivo de dados
   METHOD _ClearRecord()		// Limpa o registro da memoria (EOF por exemplo) 
   METHOD _ReadMemo()        // Recupera um conteudo de campo memo por OFFSET
@@ -144,7 +161,7 @@ ENDCLASS
 
 METHOD NEW(cFile) CLASS ZDBFTABLE 
 
-::_ResetVars() 
+::_InitVars() 
 ::cDataFile   := lower(cFile)
 
 Return self
@@ -155,20 +172,46 @@ Return self
 // Caso retorne .F. , consulte o ultimo erro usando GetErrorStr() / GetErrorCode()
 // Por hora apenas a abertura possui tratamento de erro 
 
-METHOD OPEN() CLASS ZDBFTABLE 
+METHOD OPEN(lExclusive,lCanWrite) CLASS ZDBFTABLE 
+Local nFMode := 0
 
 ::_ResetError()
 
-If ::nHData <> -1
+If ::lOpened
 	::_SetError(-1,"File Already Open")
 	Return .F.
 Endif
 
+If lExclusive = NIL ; 	lExclusive := .F. ; Endif
+If lCanWrite = NIL ; 	lCanWrite := .F.  ; Endif
+
+If lExclusive
+	nFMode += FO_EXCLUSIVE
+Else
+	nFMode += FO_SHARED
+Endif
+
+If lCanWrite
+	nFMode += FO_READWRITE
+Else
+	nFMode += FO_READ
+Endif
+
+// Por enquanto faz escrita apenas em modo exclusivo
+If lCanWrite .AND. !lExclusive
+	::_SetError(-6,"Unable to OPEN for WRITE in SHARED MODE -- Use Exclusive mode or OPEN FOR READ")
+	Return .F.
+Endif
+
+// Atualiza propriedades de controle da classe
+::lExclusive   := lExclusive
+::lCanWrite    := lCanWrite
+
 // Abre o arquivo de dados
-::nHData := Fopen(::cDataFile)
+::nHData := Fopen(::cDataFile,nFMode)
 
 If ::nHData == -1
-	::_SetError(-2,"Open Error - File ["+::cDataFile+"] - FERROR "+cValToChar(Ferror()))
+	::_SetError(-2,"Open Error - File ["+::cDataFile+"] Mode ["+cValToChar(nFMode)+"] - FERROR "+cValToChar(Ferror()))
 	Return .F.
 Endif
 
@@ -224,11 +267,15 @@ If !::_ReadStruct()
 Endif
 
 // Cria o array de campos do registro atual 
-::aRecord := Array(::nFldCount)
+::aGetRecord := Array(::nFldCount)
+::aPutRecord := Array(::nFldCount)
+
+// Seta que o arquivo está aberto 
+::lOpened := .T. 
 
 // Vai para o topo do arquivo 
 // e Lê o primeiro registro físico 
-::DBGoTop()
+::GoTop()
 
 Return .T. 
 
@@ -249,15 +296,113 @@ If ::nHMemo <> -1
 	fClose(::nHMemo)
 Endif
 
+// Fecha todos os indices abertos 
 For nI := 1 to len(::aIndexes)
 	::oCurrentIndex := ::aIndexes[nI]
 	::oCurrentIndex:Close()
 	FreeObj(::oCurrentIndex)
 Next
 
-::_ResetVars()
+::_InitVars()
 
 Return 
+
+
+// ----------------------------------------------------------\
+// Verifica se a tabela existe no disco 
+METHOD EXISTS() CLASS ZDBFTABLE 
+IF File(::cDataFile)
+	Return .T. 
+Endif
+Return .F. 
+
+// ----------------------------------------------------------\
+// Cria a tabela no disco 
+// O nome já foi recebido no construtor 
+// Recebe a estrutura e a partir dela cria a tabela 
+
+METHOD CREATE( aStru ) CLASS ZDBFTABLE 
+Local lHasMemo := .F.
+Local nFields := 0
+Local nRecSize := 1 
+Local nI, nH
+Local cNewHeader := ''
+
+If ::EXISTS()
+	::_SetError(-7,"CREATE ERROR - File Already Exists")
+Endif
+
+If ::lOpened
+	::_SetError(-8,"CREATE ERROR - File Already Opened")
+Endif
+
+nFields := len(aStru)
+
+For nI := 1 to nFields
+	If aStru[nI][2] == 'M'
+		lHasMemo := .T. 
+	Endif
+	If !aStru[nI][2]$"CNDLM"
+		UserException("CREATE ERROR - INVALID FIELD TYPE "+aStru[nI][2]+ " ("+aStru[nI][1]+")" )
+	Endif
+	// Ajusta nome do campo 
+	aStru[nI][1] := Upper(padr(aStru[nI][1],10))
+	nRecSize += aStru[nI][3]
+Next
+
+// [TODO] Criar tabela com campo memo ainda nao suportado 
+IF lHasMemo
+	UserException("*** MEMO FIELD ON CREATE() NOT SUPPORTED YET ***")
+Endif
+
+// Inicio do Header
+// 1o Byte - Formato do aRquivo 
+
+If lHasMemo
+	cNewHeader += Chr(131) // FoxBASE+/dBASE III PLUS, with memo ( DBT ) 
+Else
+	cNewHeader += chr(003) // FoxBASE+/Dbase III plus, no memo
+Endif
+
+// 3 Byte(2) = Last Update Date = TODAY
+cNewHeader +=  chr( Year(date())-2000 ) + ;
+	           chr( Month(date()) ) + ;
+	           Chr( Day(date()) ) 
+
+// 4 byte(S) - Last Record
+cNewHeader +=  L2BIN(0) 
+
+// 2 byte(s) -- Begin Data Offset
+cNewHeader +=  I2Bin( ( (nFields+1) * 32) + 2 ) 
+
+// 2 byte(s) -- Record Size 
+cNewHeader +=  I2Bin(nRecSize) 
+
+// Filler ( 32 Bytes  )
+cNewHeader +=  replicate( chr(0) , 4 )
+cNewHeader +=  replicate( chr(0) , 16 )
+
+// Acrescenta no Header a estrutura
+For nI := 1 to nFields
+
+	cNewHeader +=  aStru[nI][1] + chr(0) // Nome
+	cNewHeader +=  aStru[nI][2]  // Tipo 
+	cNewHeader +=  replicate( chr(0) , 4 ) // Filler - Reserved
+	cNewHeader +=  chr(aStru[nI][3]) // Size
+	cNewHeader +=  chr(aStru[nI][4]) // Decimal
+	cNewHeader +=  replicate( chr(0) , 14 ) // Filler - Reserved
+
+Next
+
+// Terminador "0x0D" e ASCII 0 
+cNewHeader +=  ( chr(13) + chr(0) )
+
+// Cria a tabela no disco 
+nH := fCreate(::cDataFile)
+fWrite(nH,cNewHeader)
+fCLose(nH)
+
+Return .T. 
 
 
 // ----------------------------------------------------------
@@ -279,7 +424,7 @@ X3_TITENG  => [Branch      ]
 */
 
 
-METHOD DBSetFilter( cFilter ) CLASS ZDBFTABLE
+METHOD SetFilter( cFilter ) CLASS ZDBFTABLE
 Local aCampos := {}
 Local cTemp
 Local nI, nPos
@@ -313,7 +458,7 @@ Return
 // ----------------------------------------------------------
 // Limpa a expressao de filtro atual 
 
-METHOD DBClearFilter() CLASS ZDBFTABLE 
+METHOD ClearFilter() CLASS ZDBFTABLE 
 ::bFilter := NIL
 Return
 
@@ -335,10 +480,11 @@ Return lOldSet
 // *** METODO DE USO INTERNO ***
 // Inicializa / Limpa as propriedades padrao do Objeto 
 
-METHOD _ResetVars() CLASS ZDBFTABLE 
+METHOD _InitVars() CLASS ZDBFTABLE 
 
 ::nHData      := -1
 ::nHMemo      := -1
+::lOpened     := .F. 
 ::cLastError  := ''
 ::nLastError  := 0 
 ::nLastRec    := 0
@@ -346,11 +492,17 @@ METHOD _ResetVars() CLASS ZDBFTABLE
 ::lBof        := .F. 
 ::lEof        := .F. 
 ::lHasMemo    := .F. 
+::lExclusive  := .F. 
+::lCanWrite   := .T. 
 ::aStruct     := {}
 ::nFileSize   := 0
 ::dLastUpd    := ctod("")
 ::nFldCount   := 0
-::aRecord     := {}
+::aGetRecord     := {}
+::aPutRecord  := {}
+::lUpdPend    := .F. 
+
+::lVerbose    := .F. 
 ::lDeleted    := .F. 
 ::lSetDeleted := .F. 
 ::nRecno      := 0
@@ -438,7 +590,7 @@ Return ::nLastRec
 // ----------------------------------------------------------
 // Retorna um clone do Array da estrutura da tabela 
 
-METHOD DbStruct() CLASS ZDBFTABLE 
+METHOD GetStruct() CLASS ZDBFTABLE 
 Return aClone( ::aStruct )
 
 // ----------------------------------------------------------
@@ -576,7 +728,7 @@ Return .T.
 // ----------------------------------------------------------
 // Posiciona diretamente em um regsitro 
 
-METHOD DBGoTo(nRec)  CLASS ZDBFTABLE
+METHOD GoTo(nRec)  CLASS ZDBFTABLE
 
 // Verifica se o registro é válido 
 // Se não for, vai para EOF
@@ -606,7 +758,7 @@ Return
 // Movimenta a tabela para o primeiro registro 
 // Release 20190105 : Contempla uso de indice
 
-METHOD DBGoTop() CLASS ZDBFTABLE 
+METHOD GoTop() CLASS ZDBFTABLE 
 
 IF ::nLastRec == 0 
 	// Nao há registros 
@@ -641,7 +793,7 @@ Return
 // ----------------------------------------------------------
 // Movimenta a tabela para o último registro
 
-METHOD DBGoBottom() CLASS ZDBFTABLE 
+METHOD GoBottom() CLASS ZDBFTABLE 
 
 IF ::nLastRec == 0 
 	// Nao há registros 
@@ -673,6 +825,11 @@ Endif
 
 Return
 
+// ----------------------------------------------------------
+// Permite setar o modo "verbose" da classe
+METHOD SetVerbose( lSet ) CLASS ZDBFTABLE 
+::lVerbose := lSet
+Return
 
 // ----------------------------------------------------------
 // Recupera o conteúdo de um campo da tabela 
@@ -685,11 +842,33 @@ If nPos > 0 .and. nPos <= ::nFldCount
 	IF ::aStruct[nPos][2] == 'M'
 		// Ccampo MEMO, faz a leitura baseado 
 		// no Bloco gravado na tabela 
-		Return ::_ReadMemo( ::aRecord[nPos] )
+		Return ::_ReadMemo( ::aGetRecord[nPos] )
 	Else
-		Return ::aRecord[nPos]
+		Return ::aGetRecord[nPos]
 	Endif
 	
+Endif
+
+Return NIL
+
+
+// ----------------------------------------------------------
+// Atualiza um valor na coluna informada do registro atual 
+// Por hora nao critica nada, apenas coloca o valor no array 
+
+METHOD FieldPut(nPos,xValue) CLASS ZDBFTABLE 
+
+If ( !::lCanWrite )
+	UserException("Invalid FieldPut() -- File NOT OPEN for WRITING")
+Endif
+
+If ( ::lEOF )
+	UserException("Invalid FieldPut() -- File is in EOF")
+Endif
+
+If nPos > 0 .and. nPos <= ::nFldCount 
+	::aPutRecord[nPos] := xValue
+	::lUpdPend := .T. 
 Endif
 
 Return NIL
@@ -710,6 +889,16 @@ Return NIL
 
 METHOD FieldPos( cField ) CLASS ZDBFTABLE 
 Return ASCAN( ::aStruct , {|x| x[1] = cField })
+
+// ----------------------------------------------------------
+// Recupera o nome do arquivo no disco 
+METHOD FileName() CLASS ZDBFTABLE 
+Return ::cDataFile
+
+// ----------------------------------------------------------
+// Retorna o numero de campo / colunas da tabela
+METHOD FCount()  CLASS ZDBFTABLE 
+Return ::nFldCount
 
 // ----------------------------------------
 // Retorna .T. caso a ultima movimentação de registro 
@@ -779,7 +968,7 @@ FRead(::nHData , @cRecord , ::nRecLength )
    
 ::lDeleted := ( left(cRecord,1) = '*' )
 
-// Agora lê os demais campos e coloca no ::aRecord
+// Agora lê os demais campos e coloca no ::aGetRecord
 
 For nI := 1 to ::nFldCount
 
@@ -788,20 +977,20 @@ For nI := 1 to ::nFldCount
 	cValue := substr(cRecord,nBuffPos,nTam)
 
 	If cTipo == 'C'
-		::aRecord[nI] := cValue
+		::aGetRecord[nI] := cValue
 		nBuffPos += nTam
 	ElseIf cTipo == 'N'
-		::aRecord[nI] := val(cValue)
+		::aGetRecord[nI] := val(cValue)
 		nBuffPos += nTam
 	ElseIf cTipo == 'D'
-		::aRecord[nI] := STOD(cValue)
+		::aGetRecord[nI] := STOD(cValue)
 		nBuffPos += nTam
 	ElseIf cTipo == 'L'
-		::aRecord[nI] := ( cValue=='T' )
+		::aGetRecord[nI] := ( cValue=='T' )
 		nBuffPos += nTam
 	ElseIf cTipo == 'M'
 		// Recupera o Offset do campo no DBT/FPT
-		::aRecord[nI] := val(cValue)
+		::aGetRecord[nI] := val(cValue)
 		nBuffPos += nTam
 	Endif
   
@@ -813,6 +1002,171 @@ Next
 
 Return .T. 
 
+
+// ----------------------------------------
+// Insere um registro em branco no final da tabela
+// Apos a inserção, voce pode fazer fieldput 
+// e confirmar tudo com UPDATE 
+METHOD Insert() CLASS ZDBFTABLE
+
+If ::lUpdPend
+	// Antes de mais nada, se tem um update pendente
+	// Faz primeiro o update 
+	::Update()
+Endif
+
+// Limpa o conteudo do registro 
+::_ClearRecord()
+
+// Nao estou em BOF ou EOF, 
+// Estou em modo de inserção de registro
+::lBOF := .F. 
+::lEOF := .F. 
+            
+// Incrementa uma unidade no contador de registros
+::nLastRec++
+
+// Recno atual = registro novo 
+::nRecno := ::nLastRec
+
+// Cria uma pendencia de update 
+// O update vai fazer a inserção no final do arquivo 
+::lUpdPend := .T. 
+
+// Faz o update inserir o registro em branco 
+IF ::Update()
+
+	// Atualiza o numero de registros da tabela 
+	FSeek(::nHData,4)
+	fWrite(::nHData , L2Bin(::nLastRec) )
+	
+	Return .T. 
+
+Endif
+
+Return .F. 
+
+// ----------------------------------------
+// Grava as alterações do registro atual na tabela 
+
+METHOD Update() CLASS ZDBFTABLE
+Local cTipo , nTam , xValue
+Local nI
+Local cSaveRec := '' , nOffset
+
+If !::lUpdPend
+	// Nao tem update pendente, nao faz nada
+	Return
+Endif
+
+// ----------------------------------------
+// Calcula o offset do registro atual baseado no RECNO
+
+nOffset := ::nDataPos 
+nOffset += (::nRecno * ::nRecLength)
+nOffset -= ::nRecLength
+
+// Primeiro byte do registro
+// Flag de deletado 
+cSaveRec := IIF(::lDeleted ,'*',' ') 
+
+// Agora concatena os demais campos 
+// Se nao houve alteração, momnta o buffer com o valor lido
+
+For nI := 1 to ::nFldCount
+
+	cTipo := ::aStruct[nI][2]
+	nTam  := ::aStruct[nI][3]
+	nDec  := ::aStruct[nI][4]
+
+	If ::aPutRecord[nI] != NIL 
+		// Campo alterado 
+		// Pega o novo valor
+		xValue := ::aPutRecord[nI]
+	Else
+		// Campo nao alterado 
+		// Pega o valor lido 
+		xValue := ::aGetRecord[nI]
+	Endif	
+
+	If cTipo == 'C'
+		// PADR faz padding se a string for menor 
+		// e RTRIM se for maior 
+		xValue := PADR(xValue,nTam)
+		cSaveRec += xValue
+	ElseIf cTipo == 'N'
+		cSaveRec += STR( xValue, nTam, nDec)
+	ElseIf cTipo == 'D'
+		cSaveRec += DTOS( xValue )
+	ElseIf cTipo == 'L'
+		cSaveRec += IIF( xValue , 'T' , 'F')
+	ElseIf cTipo == 'M'
+		// [TODO] Implementar update de campo memo 
+		UserException("*** MEMO FIELD UPDATE NOT SUPPORTED YET ***")
+	Endif
+
+	If ::aPutRecord[nI] != NIL 
+		// Este campo foi alterado , Atualiza buffer de leitura 
+		// E anula o campo do array de update 
+		::aGetRecord[nI] := xValue
+		::aPutRecord[nI] := NIL
+	Endif
+	
+Next
+
+IF len(cSaveRec) > ::nRecLength
+	// Jamais, nunca. 
+	// Se meu buffer em memoria passou o tamanho do registro 
+	// do arquivo, algo deu muito errado ... 
+	UserException("ZDBFTABLE::Update() ERROR - FIELD BUFFER OVERFLOW")
+Endif
+
+// Posiciona o arquivo de dados no offset do registro 
+FSeek(::nHData , nOffset )
+
+// Agora grava o buffer do registro inteiro 
+fWrite(::nHData , cSaveRec , ::nRecLength )
+
+// Desliga flag de update pendente 
+::lUpdPend := .F. 
+
+// Atualiza o header do DBF com a data do ultimo update 
+// caso necessario \
+
+If Date() > ::dLastUpd 
+	// Atualiza a data em memoria 
+	::dLastUpd  := Date()
+	// Regrava a nova data no header 
+	::_SetLUpdate()
+Endif
+
+// Agora que o registro está atualizado, atualiza os indices 
+aEval(::aIndexes , {|oIndex| oIndex:UpdateKey() })
+
+Return .T. 
+
+// ----------------------------------------------------------
+// *** METODO DE USO INTERNO ***
+// Atualiza o header da tabela com a data atualizada
+// do ultimo update realizado na tabela 
+// Metodo chamado apenas quando a data do header 
+// da tabela estiver desatualizada 
+
+METHOD _SetLUpdate() CLASS ZDBFTABLE
+Local cBuffer
+
+// Vai para o offset 1 -- 3 bytes com a data do ultimo update 
+FSeek(::nHData,1)
+
+// Monta a nova data em 3 bytes 
+cBuffer := chr( Year(::dLastUpd)-2000 ) + ;
+           chr( Month(::dLastUpd) ) + ;
+           Chr( Day(::dLastUpd) ) 
+
+// Grava a nova data no header 
+fWrite(::nHData , cBuffer)
+
+Return
 
 // ----------------------------------------------------------
 // *** METODO DE USO INTERNO ***
@@ -826,15 +1180,15 @@ For nI := 1 to ::nFldCount
 	cTipo := ::aStruct[nI][2]
 	nTam  := ::aStruct[nI][3]
 	If cTipo == 'C'
-		::aRecord[nI] := space(nTam)
+		::aGetRecord[nI] := space(nTam)
 	ElseIf cTipo == 'N'
-		::aRecord[nI] := 0
+		::aGetRecord[nI] := 0
 	ElseIf cTipo == 'D'
-		::aRecord[nI] := ctod('')
+		::aGetRecord[nI] := ctod('')
 	ElseIf cTipo == 'L'
-		::aRecord[nI] := .F.
+		::aGetRecord[nI] := .F.
 	ElseIf cTipo == 'M'
-		::aRecord[nI] := ""
+		::aGetRecord[nI] := ""
 	Endif
 Next
 Return
@@ -845,7 +1199,7 @@ Return
 // No caso de DBSkip(0), apenas faz refresh do registro atual   
 // Default = 1 ( Próximo Registro ) 
 
-METHOD DbSkip( nQtd ) CLASS ZDBFTABLE 
+METHOD Skip( nQtd ) CLASS ZDBFTABLE 
 Local lForward := .T. 
 
 If nQtd  == NIL
@@ -1068,7 +1422,7 @@ Enddo
 // Se tem filtro, e o registro nao entra no filtro, localiza 
 // o primeir registro válido 
 If ( !::_CheckFilter() )
-	::DBGoTop()
+	::GoTop()
 	::lBOF := .T. 
 Endif
 
@@ -1078,7 +1432,7 @@ Return .F.
 // Permite trocar a ordedm atual usando 
 // um indice aberto 
 
-METHOD DbSetOrder(nOrd) CLASS ZDBFTABLE
+METHOD SetOrder(nOrd) CLASS ZDBFTABLE
 If nOrd < 0 .OR.  nOrd > len( ::aIndexes )
 	UserException("DbSetOrder - Invalid Order "+cValToChar(nOrd))
 Endif
@@ -1118,28 +1472,58 @@ Return NIL
 
 // ----------------------------------------
 // Retorna o numero da ordem do indce ativo 
-METHOD DBSeek(cKeyExpr) CLASS ZDBFTABLE
+METHOD Seek(cKeyExpr) CLASS ZDBFTABLE
 Local nRecFound := 0
+
 IF ::nIndexOrd <= 0
 	UserException("DBSeek Failed - No active Index")
 Endif
+
 nRecFound := ::oCurrentIndex:IndexSeek(cKeyExpr)
+
 If nRecFound > 0
-	::DbGoto(nRecFound)
+	// NAo precisa resincronizar o indice
+	// Eu já fiz a busca pelo indice
+	::nRecno := nRecFound
+	::_ReadRecord()
 	Return .T.
 Endif
+
+// Nao achou nada, vai para EOF 
 ::lEOF := .T.
 ::_ClearRecord()
+
 Return .F.
 	
   
 // ----------------------------------------
 // *** METODO DE USO INTERNO ***
-// Acrescenta um objeto de indice na lista de indices abertos
+// Cria uma instancia de um indice em memoria 
+// Acrescenta na lista de indices 
+// Torna o indice ativo e posiciona no primeiro 
+// registro da nova ordem 
 
-METHOD _AddIndex(oIndex)  CLASS ZDBFTABLE
-aadd(::aIndexes,oIndex)
-::nIndexOrd := len(::aIndexes)
+METHOD CreateIndex(cIndexExpr) CLASS ZDBFTABLE
+Local oMemIndex
+Local nLastIndex
+
+// Cria o objeto do indice passando a instancia
+// do arquivo DBF atual 
+oMemIndex := ZDBFMEMINDEX():New(self)
+
+// Cria o indice com a expressao informada
+oMemIndex:CreateIndex(cIndexExpr) 
+
+// Acrescenta o indice criado na tabela 
+aadd(::aIndexes,oMemIndex)
+
+// E torna este indice atual 
+nLastIndex := len(::aIndexes)
+::SetOrder( nLastIndex ) 
+
+// Posiciona no primeiro registro da nova ordem 
+::GoTop()
+
 Return
 
 // =================================================
