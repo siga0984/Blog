@@ -59,7 +59,8 @@ CLASS ZDBFTABLE FROM LONGNAMECLASS
   DATA nRecLength			// Tamanho de cada registro 
   DATA nDataPos 			// Offset de inicio dos dados 
   DATA lHasMemo				// Tabela possui campo MEMO ?
-  DATA cMemoType			// Identificador (extensao) do tipo do campo MEMO
+  DATA nMemoType            // Tipo de campo MEMO da RDD (  0 = Sem Memo , 1 = DBT, 2 = FPT ) 
+  DATA cMemoExt             // Identificador (extensao) do tipo do campo MEMO
   DATA nFileSize 			// Tamanho total do arquivo em bytes 
   DATA nFldCount			// Quantidade de campos do arquivo 
   DATA aGetRecord				// Array com todas as colunas do registro atual 
@@ -81,7 +82,7 @@ CLASS ZDBFTABLE FROM LONGNAMECLASS
   DATA lEOF					// Flag de final de arquivo 
   
   DATA nHData				// Handler do arquivo de dados
-  DATA nHMemo				// Handler do arquivo de MEMO
+  DATA oMemoFile			// Objeto para lidar com campo Memo 
   DATA aStruct		   		// Array com a estrutura do DBF 
     	
   DATA nLastError			// Ultimo erro ocorrido 
@@ -230,8 +231,8 @@ If ::lHasMemo
 	// Se o header informa que a tabela possui campo MEMO 
 	// Determina o nome do arquivo MEMO 
 
-	::cMemoFile := substr(::cDataFile,1,at(".dbf",::cDataFile)-1)
-	::cMemoFile += ::cMemoType
+	::cMemoFile := substr(::cDataFile,1,rat(".",::cDataFile)-1)
+	::cMemoFile += ::cMemoExt
 	
 	If !file(::cMemoFile)
 		::_SetError(-3,"Memo file ["+::cMemoFile+"] NOT FOUND.")
@@ -239,10 +240,13 @@ If ::lHasMemo
 		Return .F. 
 	Endif
 
-	// Abre o arquivo MEMO 
-	::nHMemo := FOpen(::cMemoFile)
-    
-	If ::nHMemo == -1
+	If ::nMemoType == 1
+		::oMemoFile  := ZDBTFILE():New(self,::cMemoFile)
+	ElseIF ::nMemoType == 2
+		::oMemoFile  := ZFPTFILE():New(self,::cMemoFile)
+	Endif
+
+	If !::oMemoFile:Open(::lExclusive,::lCanWrite)
 		::_SetError(-4,"Open Error - File ["+::cMemoFile+"] - FERROR "+cValToChar(Ferror()))
 		::Close()
 		Return .F. 
@@ -257,9 +261,9 @@ If !::_ReadStruct()
 	FClose(::nHData)
 	::nHData := -1
     
-	IF ::nHMemo <> -1
-		FClose(::nHMemo)
-		::nHMemo := -1
+	IF ::oMemoFile != NIL 
+		::oMemoFile:Close()
+		FreeObj(::oMemoFile)
 	Endif
 
 	Return .F.
@@ -292,8 +296,9 @@ If ::nHData <> -1
 	fClose(::nHData)
 Endif
 
-If ::nHMemo <> -1
-	fClose(::nHMemo)
+IF ::oMemoFile != NIL 
+	::oMemoFile:Close()
+	FreeObj(::oMemoFile)
 Endif
 
 // Fecha todos os indices abertos 
@@ -327,6 +332,8 @@ Local nFields := 0
 Local nRecSize := 1 
 Local nI, nH
 Local cNewHeader := ''
+Local lOk, cMemoFile, oMemoFile
+Local cFldName
 
 If ::EXISTS()
 	::_SetError(-7,"CREATE ERROR - File Already Exists")
@@ -350,16 +357,12 @@ For nI := 1 to nFields
 	nRecSize += aStru[nI][3]
 Next
 
-// [TODO] Criar tabela com campo memo ainda nao suportado 
-IF lHasMemo
-	UserException("*** MEMO FIELD ON CREATE() NOT SUPPORTED YET ***")
-Endif
-
 // Inicio do Header
 // 1o Byte - Formato do aRquivo 
-
+// Campo memo será criado como FPT 
 If lHasMemo
-	cNewHeader += Chr(131) // FoxBASE+/dBASE III PLUS, with memo ( DBT ) 
+	::nMemoType := 2
+	cNewHeader += Chr(245) // FoxPro 2.x (or earlier) with memo ( FPT ) 
 Else
 	cNewHeader += chr(003) // FoxBASE+/Dbase III plus, no memo
 Endif
@@ -385,7 +388,12 @@ cNewHeader +=  replicate( chr(0) , 16 )
 // Acrescenta no Header a estrutura
 For nI := 1 to nFields
 
-	cNewHeader +=  aStru[nI][1] + chr(0) // Nome
+	cFldName := alltrim(aStru[nI][1])
+	while len(cFldName) < 10
+		cFldName += chr(0)
+	Enddo
+
+	cNewHeader +=  cFldName + chr(0) // Nome
 	cNewHeader +=  aStru[nI][2]  // Tipo 
 	cNewHeader +=  replicate( chr(0) , 4 ) // Filler - Reserved
 	cNewHeader +=  chr(aStru[nI][3]) // Size
@@ -394,13 +402,34 @@ For nI := 1 to nFields
 
 Next
 
-// Terminador "0x0D" e ASCII 0 
-cNewHeader +=  ( chr(13) + chr(0) )
+// Final do Header apos estrutura 
+
+cNewHeader +=  chr(13)  // 0x0D = Fim da estrutura 
+cNewHeader +=  chr(0)   // 0c00 = Filler
+cNewHeader +=  chr(26)  // 0x1A = End Of File
 
 // Cria a tabela no disco 
 nH := fCreate(::cDataFile)
+
+If nH == -1
+	::_SetError(-9,"CREATE ERROR - Data File ["+::cDataFile+"] - FERROR ("+cValToChar(Ferror())+")")
+	Return .F. 
+Endif
+
 fWrite(nH,cNewHeader)
 fCLose(nH)
+
+If lHasMemo
+	cMemoFile := substr(::cDataFile,1,rat(".",::cDataFile)-1)
+	cMemoFile += '.fpt'
+	oMemoFile := ZFPTFILE():New(self,cMemoFile)
+	lOk := oMemoFile:Create()
+	FreeObj(oMemoFile)
+	If !lOk
+		::_SetError(-9,"CREATE ERROR - Data File ["+::cDataFile+"] - FERROR ("+cValToChar(Ferror())+")")
+		Return .F. 
+	Endif
+Endif
 
 Return .T. 
 
@@ -483,7 +512,6 @@ Return lOldSet
 METHOD _InitVars() CLASS ZDBFTABLE 
 
 ::nHData      := -1
-::nHMemo      := -1
 ::lOpened     := .F. 
 ::cLastError  := ''
 ::nLastError  := 0 
@@ -498,7 +526,7 @@ METHOD _InitVars() CLASS ZDBFTABLE
 ::nFileSize   := 0
 ::dLastUpd    := ctod("")
 ::nFldCount   := 0
-::aGetRecord     := {}
+::aGetRecord  := {}
 ::aPutRecord  := {}
 ::lUpdPend    := .F. 
 
@@ -506,7 +534,8 @@ METHOD _InitVars() CLASS ZDBFTABLE
 ::lDeleted    := .F. 
 ::lSetDeleted := .F. 
 ::nRecno      := 0
-::cMemoType   := ''
+::cMemoExt    := ''
+::nMemoType   := 0 
 ::bFilter     := NIL
 ::nIndexOrd   := 0
 ::aIndexes    := {}
@@ -619,11 +648,13 @@ nTemp := ASC(cTemp)
 If ::cDBFType == '0x83'   
 	// FoxBASE+/dBASE III PLUS, with memo
 	::lHasMemo := .T. 
-	::cMemoType := ".dbt"
+	::cMemoExt := ".dbt"
+	::nMemoType := 1
 ElseIf ::cDBFType == '0xF5'
 	// FoxPro 2.x (or earlier) with memo
 	::lHasMemo := .T. 
-	::cMemoType := ".fpt"
+	::cMemoExt := ".fpt"
+	::nMemoType := 2
 Endif
 
 If !DBSuported(::cDBFType)
@@ -840,7 +871,7 @@ METHOD FieldGet(nPos) CLASS ZDBFTABLE
 If nPos > 0 .and. nPos <= ::nFldCount 
 
 	IF ::aStruct[nPos][2] == 'M'
-		// Ccampo MEMO, faz a leitura baseado 
+		// Campo MEMO, faz a leitura baseado 
 		// no Bloco gravado na tabela 
 		Return ::_ReadMemo( ::aGetRecord[nPos] )
 	Else
@@ -990,6 +1021,7 @@ For nI := 1 to ::nFldCount
 		nBuffPos += nTam
 	ElseIf cTipo == 'M'
 		// Recupera o Offset do campo no DBT/FPT
+		// aGetRecord sempre vai conter o OFFSET
 		::aGetRecord[nI] := val(cValue)
 		nBuffPos += nTam
 	Endif
@@ -1035,8 +1067,12 @@ Endif
 
 // Faz o update inserir o registro em branco 
 IF ::Update()
+               
+	// Escreve o novo final de arquivo 
+	FSeek(::nHData,0,2)
+	fWrite(::nHData , chr(26) ) // !a = End Of File 
 
-	// Atualiza o numero de registros da tabela 
+	// Atualiza o numero do ultimo registro no Header
 	FSeek(::nHData,4)
 	fWrite(::nHData , L2Bin(::nLastRec) )
 	
@@ -1053,6 +1089,7 @@ METHOD Update() CLASS ZDBFTABLE
 Local cTipo , nTam , xValue
 Local nI
 Local cSaveRec := '' , nOffset
+Local nMemoBlock, nNewBlock
 
 If !::lUpdPend
 	// Nao tem update pendente, nao faz nada
@@ -1071,7 +1108,7 @@ nOffset -= ::nRecLength
 cSaveRec := IIF(::lDeleted ,'*',' ') 
 
 // Agora concatena os demais campos 
-// Se nao houve alteração, momnta o buffer com o valor lido
+// Se nao houve alteração, monta o buffer com o valor lido
 
 For nI := 1 to ::nFldCount
 
@@ -1079,39 +1116,89 @@ For nI := 1 to ::nFldCount
 	nTam  := ::aStruct[nI][3]
 	nDec  := ::aStruct[nI][4]
 
-	If ::aPutRecord[nI] != NIL 
-		// Campo alterado 
-		// Pega o novo valor
-		xValue := ::aPutRecord[nI]
-	Else
-		// Campo nao alterado 
-		// Pega o valor lido 
-		xValue := ::aGetRecord[nI]
-	Endif	
-
 	If cTipo == 'C'
-		// PADR faz padding se a string for menor 
-		// e RTRIM se for maior 
-		xValue := PADR(xValue,nTam)
-		cSaveRec += xValue
+
+		If ::aPutRecord[nI] != NIL 
+			xValue := PADR( ::aPutRecord[nI] ,nTam)
+			cSaveRec += xValue
+			::aPutRecord[nI] := NIL
+			::aGetRecord[nI] := xValue
+		Else
+			cSaveRec += ::aGetRecord[nI]
+		Endif	
+
 	ElseIf cTipo == 'N'
-		cSaveRec += STR( xValue, nTam, nDec)
+
+		If ::aPutRecord[nI] != NIL 
+			xValue := ::aPutRecord[nI]
+			cSaveRec += STR( xValue , nTam, nDec)
+			::aPutRecord[nI] := NIL
+			::aGetRecord[nI] := xValue
+		Else
+			cSaveRec += STR( ::aGetRecord[nI], nTam, nDec)
+		Endif
+
 	ElseIf cTipo == 'D'
-		cSaveRec += DTOS( xValue )
+
+		If ::aPutRecord[nI] != NIL 
+			xValue := ::aPutRecord[nI]
+			cSaveRec += DTOS( xValue )
+			::aPutRecord[nI] := NIL
+			::aGetRecord[nI] := xValue
+		Else
+			cSaveRec += DTOS( ::aGetRecord[nI] )
+		Endif
+
 	ElseIf cTipo == 'L'
-		cSaveRec += IIF( xValue , 'T' , 'F')
+
+		If ::aPutRecord[nI] != NIL 
+			xValue := ::aPutRecord[nI]
+			cSaveRec += IIF( xValue , 'T' , 'F')
+			::aPutRecord[nI] := NIL
+			::aGetRecord[nI] := xValue
+		Else
+			cSaveRec += IIF( ::aGetRecord[nI] , 'T' , 'F')
+		Endif
+
+
 	ElseIf cTipo == 'M'
-		// [TODO] Implementar update de campo memo 
-		UserException("*** MEMO FIELD UPDATE NOT SUPPORTED YET ***")
+
+		// Update de campo memo
+		// Se realmente foi feito uma troca de valor, vamos ver o que fazer 
+		// O bloco usado ( caso tivesse um ) está no ::aGetRecord[nI]
+
+		If ::aPutRecord[nI] != NIL 
+
+			// Pega o valor a atualizar no campo memo 
+			xValue := ::aPutRecord[nI]
+			
+			// Verifica o numero do bloco usado 
+			// 0 = sem bloco , sem conteudo 
+			nMemoBlock := ::aGetRecord[nI]
+			
+			// Faz update deste memo. Se nao usava bloco, pode passar
+			// a usar. Se já usava, se o memo nao for maior do que o já existente
+			// ou nao atingir o limite do block, pode usar o mesmo espaço
+			nNewBlock := ::oMemoFile:WRITEMEMO( nMemoBlock , xValue ) 
+			
+			If nNewBlock <> nMemoBlock
+				// Trocou de bloco 
+				cSaveRec += str( nNewBlock , 10 )
+				// Atualiza a variavel de memoria 
+				::aGetRecord[nI] := nNewBlock
+			Else
+				// Manteve o bloco 
+				cSaveRec += str( nMemoBlock , 10 )
+			Endif
+		
+		Else
+
+			cSaveRec += STR( ::aGetRecord[nI] , 10 )
+
+		Endif
+		
 	Endif
 
-	If ::aPutRecord[nI] != NIL 
-		// Este campo foi alterado , Atualiza buffer de leitura 
-		// E anula o campo do array de update 
-		::aGetRecord[nI] := xValue
-		::aPutRecord[nI] := NIL
-	Endif
-	
 Next
 
 IF len(cSaveRec) > ::nRecLength
@@ -1188,7 +1275,7 @@ For nI := 1 to ::nFldCount
 	ElseIf cTipo == 'L'
 		::aGetRecord[nI] := .F.
 	ElseIf cTipo == 'M'
-		::aGetRecord[nI] := ""
+		::aGetRecord[nI] := 0
 	Endif
 Next
 Return
@@ -1242,71 +1329,13 @@ Return
 // baseado no numero do bloco rececido como parametro 
 
 METHOD _ReadMemo(nBlock) CLASS ZDBFTABLE
-Local nFilePos
 Local cMemo := '' 
-Local cBlock := ''
-Local nEndPos
-Local nByte1,nByte2,nByte3,nByte4
 
 If nBlock > 0
 
-	IF ::cMemoType == ".dbt"
+	// Le o conteúdo do campo MEMO 
+	cMemo := ::oMemoFile:ReadMemo(nBlock)
 
-		// Leitura de MEMO em Arquivo DBT
-		
-		cBlock := space(512)
-		nFilePos := nBlock * 512 
-		fSeek(::nHMemo , nFilePos)
-		While .T. 
-			fRead(::nHMemo,@cBlock,512)
-			nEndPos := at(chr(26),cBlock)
-			If nEndPos > 0 
-				cBlock := left(cBlock,nEndPos-1)
-				cMemo += cBlock
-				EXIT
-			Else
-				cMemo += cBlock
-			Endif
-		Enddo	
-		
-		// -- Quebra de linha "soft" = 8D 0A
-		// -- Remove a quebra 
-		cMemo := strtran(cMemo , chr(141)+chr(10) , '' ) 
-
-	ElseIF ::cMemoType == ".fpt"
-
-		// Leitura de MEMO em Arquivo FPT  
-		// Offset 1-4 Tipo do registro ( 0x00 0x00 0x00 0x01 )
-		// Offset 5-8 Tamanho do registro 
-
-		cBlock := space(8)
-		nFilePos := nBlock * 16384
-		fSeek(::nHMemo , nFilePos)
-		fRead(::nHMemo,@cBlock,8)
-
-		// Calcula o tamnho do registro 
-
-		nByte1 := asc(substr(cBlock,5,4))
-		nByte2 := asc(substr(cBlock,6,4))
-		nByte3 := asc(substr(cBlock,7,4))
-		nByte4 := asc(substr(cBlock,8,4))
-		
-		nMemoSize := nByte4
-		If nByte3 > 0 
-			nMemoSize += ( nByte3 * 256 )
-		Endif
-		If nByte2 > 0 
-			nMemoSize += ( nByte3 * 65536 )
-		Endif
-		If nByte1 > 0 
-			nMemoSize += ( nByte3 * 16777216 )
-		Endif
-
-		// Lê o registro direto para a memória
-		fRead(::nHMemo,@cMemo,nMemoSize)
-
-	Endif
-	
 Endif
 
 Return cMemo
@@ -1534,7 +1563,7 @@ Return
 // O 3o elemento quando .T. indoca se o formato é suportado 
 
 STATIC _aDbTypes := { { '0x02','FoxBASE'                                              , .F. } , ;
-                      { '0x03','FoxBASE+/Dbase III plus, no memo'                     , .T. } , ;  // ####  
+                      { '0x03','FoxBASE+/Dbase III plus, no memo'                     , .T. } , ;  // ####  (No Memo)
                       { '0x04','dBASE IV or IV w/o memo file'                         , .F. } , ;
                       { '0x05','dBASE V w/o memo file'                                , .F. } , ;
                       { '0x30','Visual FoxPro'                                        , .F. } , ;
@@ -1543,11 +1572,11 @@ STATIC _aDbTypes := { { '0x02','FoxBASE'                                        
                       { '0x43','dBASE IV SQL table files, no memo'                    , .F. } , ;
                       { '0x63','dBASE IV SQL system files, no memo'                   , .F. } , ;
                       { '0x7B','dBASE IV with memo'                                   , .F. } , ;
-                      { '0x83','FoxBASE+/dBASE III PLUS, with memo'                   , .T. } , ;  // ####
+                      { '0x83','FoxBASE+/dBASE III PLUS, with memo'                   , .T. } , ;  // ####  DBT
                       { '0x8B','dBASE IV with memo'                                   , .F. } , ;
                       { '0x8E','dBASE IV w. SQL table'                                , .F. } , ;
                       { '0xCB','dBASE IV SQL table files, with memo'                  , .F. } , ;
-                      { '0xF5','FoxPro 2.x (or earlier) with memo'                    , .T. } , ;  // ####  
+                      { '0xF5','FoxPro 2.x (or earlier) with memo'                    , .T. } , ;  // ####  FPT
                       { '0xE5','HiPer-Six format with SMT memo file'                  , .F. } , ;
                       { '0xFB','FoxBASE'                                              , .F. } } 
 
@@ -1608,4 +1637,6 @@ Local cOldSet := Set(_SET_DATEFORMAT, 'yyyy:mm:dd')
 Local dRet := CTOD(Substr(cValue,1,4)+":"+Substr(cValue,5,2)+":"+Substr(cValue,7,2))
 Set(_SET_DATEFORMAT, cOldSet)
 Return dRet
+
+
 
