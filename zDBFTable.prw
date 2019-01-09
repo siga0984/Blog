@@ -1,5 +1,6 @@
 #include 'protheus.ch'
 #include 'fileio.ch'
+#include "zLibDec2Hex.ch"
 
 /* ===========================================================================
 
@@ -30,17 +31,21 @@ Release 20190106
 - Implementação de indice em memória 
 - Implementação de filtro de registros deletados
 
+Debitos Tecnicos
 
+1) Melhorar a inserção. Atualmente é inserido um registro em branco 
+direto no final da tabela, e então ele é alterado. Verificar forma 
+de postergar a inserção, para escrever os novos dados de uma vez 
 
 Referências do Formato de Arquivos DBF / DBT / FPT 
 
+http://web.tiscali.it/SilvioPitti/
 https://www.dbase.com/Knowledgebase/INT/db7_file_fmt.htm
 http://dbfviewer.com/dbf-file-structure/
 https://www.loc.gov/preservation/digital/formats/fdd/fdd000325.shtml
 https://en.wikipedia.org/wiki/.dbf
 http://www.dbfree.org/webdocs/1-documentation/b-dbf_header_specifications.htm
 http://www.independent-software.com/dbase-dbf-dbt-file-format.html
-http://web.tiscali.it/SilvioPitti/
 http://www.idea2ic.com/File_Formats/DBF%20FILE%20STRUCTURE.pdf
 http://www.oocities.org/geoff_wass/dBASE/GaryWhite/dBASE/FAQ/qformt.htm
 http://www.dbfree.org/webdocs/1-documentation/a-about_indexes.htm
@@ -59,7 +64,7 @@ CLASS ZDBFTABLE FROM LONGNAMECLASS
   DATA nRecLength			// Tamanho de cada registro 
   DATA nDataPos 			// Offset de inicio dos dados 
   DATA lHasMemo				// Tabela possui campo MEMO ?
-  DATA nMemoType            // Tipo de campo MEMO da RDD (  0 = Sem Memo , 1 = DBT, 2 = FPT ) 
+  DATA nMemoType            // Tipo de campo MEMO da RDD ( 1 = DBT, 2 = FPT ) 
   DATA cMemoExt             // Identificador (extensao) do tipo do campo MEMO
   DATA nFileSize 			// Tamanho total do arquivo em bytes 
   DATA nFldCount			// Quantidade de campos do arquivo 
@@ -98,14 +103,15 @@ CLASS ZDBFTABLE FROM LONGNAMECLASS
 
   METHOD GetDBType()		// REtorna identificador hexadecimal do tipo da tabela 
   METHOD GetDBTypeStr() 	// Retorna string identificando o tipo da tabela 
+  METHOD GetMemoType()      // Tipo do MEMO usado, 1 = DBT , 2 = FPT
 
   METHOD Lastrec()			// Retorna o total de registros / numero do ultimo registro da tabela 
   METHOD RecCount()			// Retorna o total de registros / numero do ultimo registro da tabela 
   METHOD GetStruct()		// Retorna CLONE da estrutura de dados da tabela 
-  METHOD GoTo(nRec)		// Posiciona em um registro informado. 
+  METHOD GoTo(nRec)		    // Posiciona em um registro informado. 
   METHOD GoTop()			// Posiciona no RECNO 1 da tabela 
-  METHOD GoBottom()   	// Posiciona em LASTREC da tabela 
-  METHOD Skip( nQtd )     // Navega para frente ou para tráz uma quantidade de registros 
+  METHOD GoBottom()   	    // Posiciona em LASTREC da tabela 
+  METHOD Skip( nQtd )       // Navega para frente ou para tráz uma quantidade de registros 
   METHOD FieldGet( nPos )   // Recupera o conteudo da coluna informada do registro atual 
   METHOD FieldPut( nPos )   // Faz update em uma coluna do registro atual 
   METHOD FieldName( nPos )	// Recupera o nome da coluna informada 
@@ -116,8 +122,8 @@ CLASS ZDBFTABLE FROM LONGNAMECLASS
   METHOD EOF()				// Retorna .T, caso o final de arquivo tenha sido atingido 
   METHOD Recno()			// Retorna o numero do registro (RECNO) posicionado 
   METHOD Deleted()			// REtorna .T. caso o registro atual esteja DELETADO ( Marcado para deleção ) 
-  METHOD SetFilter()      // Permite setar um filtro para os dados 
-  METHOD ClearFilter()    // Limpa o filtro 
+  METHOD SetFilter()        // Permite setar um filtro para os dados 
+  METHOD ClearFilter()      // Limpa o filtro 
   METHOD SetDeleted()       // Liga ou desliga filtro de registros deletados
   
   METHOD Insert()           // Insere um registro em branco no final da tabela
@@ -292,10 +298,12 @@ Return .T.
 METHOD CLOSE() CLASS ZDBFTABLE 
 Local nI
 
+// Fecha o arquivo aberto 
 If ::nHData <> -1
 	fClose(::nHData)
 Endif
 
+// Se tem memo, fecha 
 IF ::oMemoFile != NIL 
 	::oMemoFile:Close()
 	FreeObj(::oMemoFile)
@@ -308,6 +316,7 @@ For nI := 1 to len(::aIndexes)
 	FreeObj(::oCurrentIndex)
 Next
 
+// Limpa as propriedades
 ::_InitVars()
 
 Return 
@@ -458,6 +467,11 @@ Local aCampos := {}
 Local cTemp
 Local nI, nPos
 
+If !::lOpened
+	::_SetError(-8,"SETFILTER ERROR - File Not Opened")
+	Return .F.
+Endif
+
 // Cria lista de campos 
 aEval( ::aStruct , {|x| aadd(aCampos , x[1]) } )
 
@@ -482,7 +496,7 @@ cTemp := "{|o| "+cTemp+"}"
 // Monta efetivamente o codeblock 
 ::bFilter := &(cTemp)
 
-Return
+Return .T. 
 
 // ----------------------------------------------------------
 // Limpa a expressao de filtro atual 
@@ -501,8 +515,6 @@ If pCount() > 0
 	::lSetDeleted := lSet
 Endif
 Return lOldSet
-
-
 
 
 // ----------------------------------------------------------
@@ -542,7 +554,6 @@ METHOD _InitVars() CLASS ZDBFTABLE
 ::oCurrentIndex := {}
 
 Return
-
 
 // ----------------------------------------------------------
 // Retorna o código do ultimo erro e a descrição por referencia
@@ -588,6 +599,12 @@ METHOD GetDBType() CLASS ZDBFTABLE
 Return ::cDBFType
 
 // ----------------------------------------------------------
+// Tipo do MEMO usado, 1 = DBT , 2 = FPT
+
+METHOD GetMemoType()  CLASS ZDBFTABLE 
+Return ::nMemoType
+
+// ----------------------------------------------------------
 // Retorna a descrição do tipo de arquivo DBF 
 
 METHOD GetDBTypeStr() CLASS ZDBFTABLE 
@@ -615,7 +632,6 @@ Return ::nLastRec
 METHOD Reccount() CLASS ZDBFTABLE 
 Return ::nLastRec
 
-
 // ----------------------------------------------------------
 // Retorna um clone do Array da estrutura da tabela 
 
@@ -631,6 +647,10 @@ Local cBuffer := space(32)
 Local nYear, nMonth, nDay
 Local cTemp := ''
 Local nTemp := 0
+
+If ::nHData == -1 
+	UserException("_ReadHeader() ERROR - DBF File Not Opened")
+Endif
 
 // Reposicionao o arquivo no Offset 0
 // Le os primeiros 32 bytes do Header
@@ -725,6 +745,10 @@ BYTES DESCRIPTION
 METHOD _ReadStruct() CLASS ZDBFTABLE 
 Local cFldBuff := space(32)
 Local cFldName, cFldType  , nFldLen , nFldDec 
+
+If ::nHData == -1 
+	UserException("_ReadStruct() ERROR - DBF File Not Opened")
+Endif
 
 // Reposicionao o arquivo no Offset 32
 FSeek(::nHData,32)
@@ -1193,6 +1217,8 @@ For nI := 1 to ::nFldCount
 		
 		Else
 
+			// Memo nao foi atualizado. 
+			// Mantem valor atual 
 			cSaveRec += STR( ::aGetRecord[nI] , 10 )
 
 		Endif
@@ -1600,7 +1626,7 @@ Return '0x'+padl( upper(DEC2HEX(nByte)) , 2 , '0')
 // Retorna a string a partir do tipo 
 
 STATIC Function GetDBTypeStr(cTypeHex)
-Local cRet := '(Unknow DBF file / NOT a DBF File)'
+Local cRet := '(Unknow file -- NOT a DBF File)'
 Local nPos := ascan(_aDbTypes,{|x| x[1] == cTypeHex })
 If nPos > 0 
 	cRet := _aDbTypes[nPos][2]
@@ -1621,22 +1647,10 @@ Return lSup
 
 
 // ----------------------------------------
-// Converte um valort decimal de 0 a 255 para Hexadecimal 
-
-STATIC __aHEx := {'0','1','2','3','4','5','6','7','8','9','a','b','c','d','e','f'}
-
-STATIC Function DEC2HEX(nByte)
-Local nL := ( nByte % 16 ) 
-Local nH := ( nByte-nL) / 16 
-Return __aHex[nH+1]+__aHex[nL+1]
-
-// ----------------------------------------
 // Converte data no formato AAAAMMDD para Data do AdvPL 
 STATIC Function STOD(cValue)
 Local cOldSet := Set(_SET_DATEFORMAT, 'yyyy:mm:dd')
 Local dRet := CTOD(Substr(cValue,1,4)+":"+Substr(cValue,5,2)+":"+Substr(cValue,7,2))
 Set(_SET_DATEFORMAT, cOldSet)
 Return dRet
-
-
 

@@ -1,5 +1,6 @@
 #include 'protheus.ch'
 #include 'fileio.ch'
+#include "zLibNBin.ch"
 
 /* ==========================================================
 
@@ -9,29 +10,38 @@ Data		01/2019
 Descrição 	Classe de manutenção de arquivo DBF MEMO
 			Formato FTP ( FoxPro2 ) 
 
-Implementação de Leitura e Gravação 
+- Implementação de Leitura e Gravação 
+- Criação do FPT File usando Block Size de 16K 
+
+O processo de gravação é rápido, porem nao há mecanismo eficiente 
+Implementado para reaproveitamento de espaços vazios. Posteriormente 
+pode ser implementado uma estrutura, reservando alguns blocos, 
+para criar um mapa dos espaços livres para reaproveitamento 
 			
 ========================================================== */
 
 CLASS ZFPTFILE
 
-   DATA oDBF
-   DATA cFileName
-   DATA nFileSize
-   DATA nHMemo
-   DATA nNextBlock
-   DATA nBlockSize
+   DATA oDBF                 // Objeto ZDBFTABLE owner do MEMO 
+   DATA cFileName            // Nome do arquivo FPT
+   DATA nHMemo               // Handler do arquivo 
+   DATA nNextBlock           // Proximo bloco para inserção de dados 
+   DATA nBlockSize           // Tamanho do bloco em bytes 
+   DATA lExclusive           // Arquivo aberto em modo exclusivo ?
+   DATA lCanWrite            // Arquivo aberto para gravacao 
 
-   METHOD NEW()
-   METHOD CREATE()
-   METHOD OPEN()
-   METHOD CLOSE()
-   METHOD READMEMO()
-   METHOD WRITEMEMO()
+   METHOD NEW()              // Construtor
+   METHOD CREATE()           // Cria o arquivo 
+   METHOD OPEN()             // Abre o FPT 
+   METHOD CLOSE()            // Fecha o FPT
+   METHOD READMEMO()         // Le um memo armazenado em um bloco
+   METHOD WRITEMEMO()        // Insere ou atualiza um memo em um bloco 
 
 ENDCLASS
               
 // ----------------------------------------------------------
+// Construtor
+// Recebe o objeto ZDBFTABLE e o nome do arquivo FPT 
 
 METHOD NEW(_oDBF,_cFileName) CLASS ZFPTFILE
 
@@ -40,12 +50,15 @@ METHOD NEW(_oDBF,_cFileName) CLASS ZFPTFILE
 ::nHMemo     := -1
 ::nBlockSize := 16384
 ::nNextBlock := 1 
-::nFileSize  := 0 
+::lExclusive := .F.
+::lCanWrite  := .F.
 
 Return self
 
 
 // ----------------------------------------------------------
+// Criação do arquivo 
+// Cria um arquivo FPT vazio 
 
 METHOD CREATE() CLASS ZFPTFILE
 Local nHFile, cHeader
@@ -81,14 +94,18 @@ cFiller1   := chr(0) + chr(0)
 cBlockSize := NToBin2( ::nBlockSize )                // Tamanho do Bloco 
 cFiller2   := replicate( chr(0) , 504 )       
 
+// Monta o Header do arquivo
 cHeader := cNextBlock + cFiller1 + cBlockSize +cFiller2
 
+// Grava o header em disco 
 fWrite(nHFile,cHEader,512)
 FClose(nHFile)
 
 Return .T. 
 
 // ----------------------------------------------------------
+// Abertura do arquivo FPT 
+// Recebe os mesmos modos de abertura do ZDBFTABLE
 
 METHOD OPEN(lExclusive,lCanWrite) CLASS ZFPTFILE
 Local cBuffer := ''
@@ -96,6 +113,9 @@ Local nFMode := 0
 
 If lExclusive = NIL ; 	lExclusive := .F. ; Endif
 If lCanWrite = NIL ; 	lCanWrite := .F.  ; Endif
+
+::lExclusive := lExclusive
+::lCanWrite  := lCanWrite
 
 If lExclusive
 	nFMode += FO_EXCLUSIVE
@@ -116,9 +136,6 @@ IF ::nHMemo == -1
 	Return .F. 
 Endif
 
-// P{ega o tamanho do arquivo 
-::nFileSize := fSeek(::nHMemo,0,2)
-
 // Le  o Header do arquivo ( 512 bytes ) 
 fSeek(::nHMemo,0)
 fRead(::nHMemo,@cBuffer,512)
@@ -138,18 +155,26 @@ conout("")
 Return .T. 
 
 // ----------------------------------------------------------
+// Fecha o arquivo FPT
 
 METHOD CLOSE() CLASS ZFPTFILE
 
 IF ::nHMemo != -1
 	fClose(::nHMemo)
-	::nHMemo := -1
 Endif
+
+::nHMemo     := -1
+::nBlockSize := 16384
+::nNextBlock := 1 
+::lExclusive := .F.
+::lCanWrite  := .F.
 
 Return
 
 
 // ----------------------------------------------------------
+// Lê um campo memo armazenado em um Bloco
+// Recebe o número do bloco como parâmetro
 
 METHOD READMEMO(nBlock) CLASS ZFPTFILE
 Local cMemo   := ''
@@ -191,6 +216,9 @@ Return cMemo
 // Atualiza ou insere um valor em um campo memo 
 // Se nBlock = 0 , Conteudo novo 
 // Se nBlock > 0 , Conteudo j[a existente 
+//
+// Release 20190109 - Tratar "limpeza" de campo. 
+//                  - Ignorar inserção de string vazia
 
 METHOD WRITEMEMO( nBlock , cMemo ) CLASS ZFPTFILE
 Local nTamFile
@@ -201,14 +229,25 @@ Local nMemoSize
 Local nChuckSize
 Local nUsedBlocks
 Local nMaxMemoUpd
+Local nFileSize
 
-If nBlock > 0 
+If ( !::lCanWrite )
+	UserException("ZFPTFILE::WRITEMEMO() FAILED - FILE OPENED FOR READ ONLY")
+Endif
 
-	// Estou atualizamdo um memo já gravado. 
-	// verifica se cabe no blocco atual 
-	// Se nao couber , usa um novo . 
+If  Len(cMemo) == 0 .AND. nBlock == 0 
+	// Atualização de campo memo vazia. 
+	// Se o block é zero, estou inserindo, ignora a operação. 
+	return 0 
+Endif
+
+If nBlock > 0
+	
+	// Eatou atualizando conteúdo
+	// verifica se cabe no blocco atual
+	// Se nao couber , usa um novo .
 	// Primeiro lê o tamanho do campo atual
-	// e quantos blocos ele usa 
+	// e quantos blocos ele usa
 	
 	cBuffer  := space(8)
 	nFilePos := nBlock * ::nBlockSize
@@ -216,46 +255,53 @@ If nBlock > 0
 	fRead(::nHMemo,@cBuffer,8)
 	nMemoSize := Bin4toN( substr(cBuffer,5,4) )
 	nChuckSize :=  nMemoSize + 8
-
-	// Calcula quantos blocos foram utilizados 
+	
+	// Calcula quantos blocos foram utilizados
 	nUsedBlocks := int( nChuckSize / ::nBlockSize )
 	IF nChuckSize > ( nUsedBlocks * ::nBlockSize)
 		nUsedBlocks++
 	Endif
-
-	// Calcula o maior campo memo que poderia reapproveitar 
+	
+	// Calcula o maior campo memo que poderia reaproveitar
 	// o(s) bloco(s) usado(s), descontando os 8 bytes de controle
-	nMaxMemoUpd := (nUsedBlocks * ::nBlockSize) - 8 
-
+	nMaxMemoUpd := (nUsedBlocks * ::nBlockSize) - 8
+	
 	If len(cMemo) > nMaxMemoUpd
-
-		// Passou, nao dá pra reaproveitar. 
-		// Zera o nBlock, para alocar um novo bloco 
+		
+		// Passou, nao dá pra reaproveitar.
+		// Zera o nBlock, para alocar um novo bloco
+		// Como se o conteudo estivesse sendo inserido agora
+		
 		nBlock := 0
-
+		
 	Else
-
+		
 		// Cabe no mesmo bloco ... remonta o novo buffer
-		// e atualiza o campo 
-
+		// e atualiza o campo. 
+		
+		// Mesmo que eu esteja atualizando o campo para uma string vazia 
+		// eu mantenho o bloco alocado, para posterior reaproveitamento 
+		
 		nMemoSize  := len(cMemo)
 		nChuckSize :=  nMemoSize + 8
 		
-		cBuffer := NtoBin4( 01 ) // Tipo de registro = Memo 
+		cBuffer := NtoBin4( 01 ) // Tipo de registro = Memo
 		cBuffer += NtoBin4( nMemoSize )
 		cBuffer += cMemo
-
-		// Posiciona no inicio do bloco já usado 
+		
+		// Posiciona no inicio do bloco já usado
 		fSeek(::nHMemo , nFilePos)
 		fWrite(::nHMemo,cBuffer,nChuckSize)
-	
-	
-	Endif	
+
+	Endif
 	
 Endif
 
 If nBlock == 0 
 	
+	// Pega o tamanho do arquivo 
+	nFileSize := fSeek(::nHMemo,0,2)
+
 	// Estou inserindo um conteudo em um campo memo ainda nao utilizado. 
 	// Ou estou usando um novo bloco , pois o campo memo 
 	// nao cabe no bloco anteriormente utilizado 
@@ -263,10 +309,10 @@ If nBlock == 0
 	
 	nTamFile := ::nNextBlock * ::nBlockSize
 
-	If ::nFileSize < nTamFile
+	If nFileSize < nTamFile
 		// Se o ultimo bloco do arquivo ainda nao foi preenchido com um "Filler" 
 		// até o inicio do proximo bloco , preenche agora
-		nFiller := nTamFile - ::nFileSize
+		nFiller := nTamFile - nFileSize
 		fSeek(::nHMemo,0,2)
 		fWrite(::nHMemo , replicate( chr(0) , nFiller ) , nFiller ) 
 	Endif
@@ -307,77 +353,6 @@ If nBlock == 0
 
 Endif
 
-// Apos a gravacao, atualiza o tamanho do arquivo 
-::nFileSize := fSeek(::nHMemo,0,2)
-
 // Retorna o numero do bloco usado para a operação 
 Return nBlock
-
-// ------------------------------------------------------------
-// Converte buffer de 4 bytes ( 32 Bits ) no seu valor numerico  
-
-STATIC Function Bin4toN(cBin4)
-Local nByte1,nByte2,nByte3,nByte4
-
-nByte1 := asc(substr(cBin4,1,1))
-nByte2 := asc(substr(cBin4,2,1))
-nByte3 := asc(substr(cBin4,3,1))
-nByte4 := asc(substr(cBin4,4,1))
-
-If nByte3 > 0
-	nByte4 += ( nByte3 * 256 )
-Endif
-If nByte2 > 0
-	nByte4 += ( nByte2 * 65536 )
-Endif
-If nByte1 > 0
-	nByte4 += ( nByte1 * 16777216 )
-Endif
-
-Return nByte4
-
-
-// ------------------------------------------------------------
-// Converte valor numérico em buffer de 4 bytes ( 32 Bits ) 
-// ( HIgh Byte First ) 
-
-STATIC Function NtoBin4(nNum)
-Local cBin4 := '' , nTmp
-While nNum > 0
-	nTmp := nNum % 256 
-	cBin4 := chr(nTmp) + cBin4
-	nNum := ( ( nNum - nTmp ) / 256 )
-Enddo
-While len(cBin4) < 4
-	cBin4 := CHR(0) + cBin4
-Enddo
-Return cBin4
-
-
-
-// ------------------------------------------------------------
-// Converte buffer de 2 bytes ( 16 Bits ) no seu valor numerico  
-// ( HIgh Byte First ) 
-
-STATIC Function Bin2toN(cBin4)
-Local nByte1,nByte2
-
-nByte1 := asc(substr(cBin4,1,1))
-nByte2 := asc(substr(cBin4,2,1))
-
-If nByte1 > 0
-	nByte2 += ( nByte1 * 256 )
-Endif
-
-Return nByte2
-
-// ------------------------------------------------------------
-// Converte valor numérico em buffer de 2 bytes ( 16 Bits ) 
-// ( High Byte First ) 
-
-STATIC Function NtoBin2(nNum)
-Local cBin2 := '' , nTmp
-Local nL := ( nNum % 256 ) 
-Local nH := ( nNum-nL ) / 256 
-Return chr(nH) + chr(nL)
 
