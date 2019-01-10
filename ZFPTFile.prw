@@ -22,7 +22,7 @@ para criar um mapa dos espaços livres para reaproveitamento
 
 CLASS ZFPTFILE
 
-   DATA oDBF                 // Objeto ZDBFTABLE owner do MEMO 
+   DATA oDBF                 // Objeto ZDBFFILE owner do MEMO 
    DATA cFileName            // Nome do arquivo FPT
    DATA nHMemo               // Handler do arquivo 
    DATA nNextBlock           // Proximo bloco para inserção de dados 
@@ -41,7 +41,7 @@ ENDCLASS
               
 // ----------------------------------------------------------
 // Construtor
-// Recebe o objeto ZDBFTABLE e o nome do arquivo FPT 
+// Recebe o objeto ZDBFFILE e o nome do arquivo FPT 
 
 METHOD NEW(_oDBF,_cFileName) CLASS ZFPTFILE
 
@@ -105,7 +105,7 @@ Return .T.
 
 // ----------------------------------------------------------
 // Abertura do arquivo FPT 
-// Recebe os mesmos modos de abertura do ZDBFTABLE
+// Recebe os mesmos modos de abertura do ZDBFFILE
 
 METHOD OPEN(lExclusive,lCanWrite) CLASS ZFPTFILE
 Local cBuffer := ''

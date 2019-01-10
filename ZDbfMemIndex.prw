@@ -5,14 +5,14 @@
 Classe      ZDBFMEMINDEX
 Autor       Julio Wittwer
 Data        05/01/2019
-Descrição   A partir de um objeto ZDBFTABLE, permite 
+Descrição   A partir de um objeto ZDBFFILE, permite 
             a criação de um índice em memória 
 
 ================================================== */
 
 CLASS ZDBFMEMINDEX
 
-   DATA oDBF			// Objeto ZDBFTABLE relacionado ao índice 
+   DATA oDBF			// Objeto ZDBFFILE relacionado ao índice 
    DATA cIndexExpr      // Expressão AdvPL original do índice
    DATA bIndexBlock     // CodeBlock para montar uma linha de dados do índice
    DATA aIndexData      // Array com os dados do índice ordenado pela chave 
@@ -60,7 +60,7 @@ METHOD NEW(oDBF) CLASS ZDBFMEMINDEX
 Return self
 
 // ----------------------------------------
-// Chamado pela ZDBFTABLE para indicar que o registro ou chave atuais 
+// Chamado pela ZDBFFILE para indicar que o registro ou chave atuais 
 // precisam ser resincronizados devido a mudança de indice ativo
 // ou reposicionamento de registro direto por DBGoto()
 METHOD SetResync() CLASS ZDBFMEMINDEX
