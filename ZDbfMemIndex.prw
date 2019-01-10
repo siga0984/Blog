@@ -84,6 +84,11 @@ Local nRecno
 
 If ::lSetResync
 
+	If ::oDBF:Eof()
+		// Nao posso sincronizar em EOF()
+		Return
+	Endif
+
 	// Desliga flag de resync
 	::lSetResync := .F. 
 
@@ -200,7 +205,6 @@ Return .T.
 
 METHOD GetFirstRec() CLASS ZDBFMEMINDEX
 If Len(::aIndexData) > 0
-	::_CheckSync()
 	::nCurrentRow := 1
 	Return ::aIndexData[::nCurrentRow][2]
 Endif
@@ -238,7 +242,6 @@ Return 0
 
 METHOD GetLastRec() CLASS ZDBFMEMINDEX
 If Len(::aIndexData) > 0
-	::_CheckSync()
 	::nCurrentRow := Len(::aIndexData)
 	Return ::aIndexData[::nCurrentRow][2]
 Endif

@@ -1,6 +1,7 @@
 #include 'protheus.ch'
 #include 'fileio.ch'
 #include "zLibDec2Hex.ch"
+#include "zLibDateTime.ch"
 
 /* ===========================================================================
 
@@ -66,7 +67,6 @@ CLASS ZDBFTABLE FROM LONGNAMECLASS
   DATA lHasMemo				// Tabela possui campo MEMO ?
   DATA nMemoType            // Tipo de campo MEMO da RDD ( 1 = DBT, 2 = FPT ) 
   DATA cMemoExt             // Identificador (extensao) do tipo do campo MEMO
-  DATA nFileSize 			// Tamanho total do arquivo em bytes 
   DATA nFldCount			// Quantidade de campos do arquivo 
   DATA aGetRecord				// Array com todas as colunas do registro atual 
   DATA aPutRecord           // Array com campos para update 
@@ -137,6 +137,7 @@ CLASS ZDBFTABLE FROM LONGNAMECLASS
   METHOD CreateIndex()      // Cria um Indice ( em memoria ) para a tabela 
 
   METHOD Header() 			// Retorna tamanho em Bytes do Header da Tabela
+  METHOD FileSize()         // Retorna o tamanho ocupado pelo arquivo em bytes 
   METHOD RecSize()			// Retorna o tamanho de um registro da tabela 
   METHOD LUpdate()			// Retorna a data interna do arquivo que registra o ultimo update 
  
@@ -221,9 +222,6 @@ If ::nHData == -1
 	::_SetError(-2,"Open Error - File ["+::cDataFile+"] Mode ["+cValToChar(nFMode)+"] - FERROR "+cValToChar(Ferror()))
 	Return .F.
 Endif
-
-// Pega o tamanho do arquivo 
-::nFileSize := fSeek(::nHData,0,2)
 
 // Lê o Header do arquivo 
 If !::_ReadHEader()
@@ -535,7 +533,6 @@ METHOD _InitVars() CLASS ZDBFTABLE
 ::lExclusive  := .F. 
 ::lCanWrite   := .T. 
 ::aStruct     := {}
-::nFileSize   := 0
 ::dLastUpd    := ctod("")
 ::nFldCount   := 0
 ::aGetRecord  := {}
@@ -978,6 +975,15 @@ Return ::lDeleted
 
 METHOD HEADER() CLASS ZDBFTABLE 
 Return ::nDataPos
+
+// ----------------------------------------
+// Retorna o tamanho ocupado pelo arquivo em bytes 
+METHOD FileSize() CLASS ZDBFTABLE 
+Local nFileSize := 0
+If ::lOpened
+	nFileSize := fSeek(::nHData,0,2)
+Endif
+Return nFileSize
 
 // ----------------------------------------
 // Retorna o tamanho de um registro da tabela no arquivo 
@@ -1645,12 +1651,4 @@ If nPos > 0
 Endif
 Return lSup
 
-
-// ----------------------------------------
-// Converte data no formato AAAAMMDD para Data do AdvPL 
-STATIC Function STOD(cValue)
-Local cOldSet := Set(_SET_DATEFORMAT, 'yyyy:mm:dd')
-Local dRet := CTOD(Substr(cValue,1,4)+":"+Substr(cValue,5,2)+":"+Substr(cValue,7,2))
-Set(_SET_DATEFORMAT, cOldSet)
-Return dRet
 
