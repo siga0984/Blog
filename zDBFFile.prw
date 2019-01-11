@@ -51,7 +51,12 @@ http://www.idea2ic.com/File_Formats/DBF%20FILE%20STRUCTURE.pdf
 http://www.oocities.org/geoff_wass/dBASE/GaryWhite/dBASE/FAQ/qformt.htm
 http://www.dbfree.org/webdocs/1-documentation/a-about_indexes.htm
 
+
 =========================================================================== */
+
+// Pseudo-comando para trabalhar com OFFSET de Base 0 em string AdvPL 
+// Recebe STring, Offset Base 0 e Tamanho do bloco 
+#xtranslate DBF_OFFSET(<cBuffer>,<nOffset>,<nSize>) => Substr(<cBuffer>,<nOffset>+1,<nSize>)
 
 CLASS ZDBFFILE FROM ZISAMFILE
 
@@ -86,6 +91,8 @@ CLASS ZDBFFILE FROM ZISAMFILE
   METHOD EXISTS()           // Verifica se a tabela existe 
   METHOD CREATE()           // Cria a tabela no disco 
 
+  METHOD GetFileType()      // Tipo do arquivo ("DBF")
+
   METHOD GetDBType()		// REtorna identificador hexadecimal do tipo da tabela 
   METHOD GetDBTypeStr() 	// Retorna string identificando o tipo da tabela 
   METHOD GetMemoType()      // Tipo do MEMO usado, 1 = DBT , 2 = FPT
@@ -116,6 +123,12 @@ CLASS ZDBFFILE FROM ZISAMFILE
   METHOD _ReadMemo()        // Recupera um conteudo de campo memo por OFFSET
 
 ENDCLASS
+
+// ----------------------------------------------------------
+// Retorna o tipo do arquivo 
+
+METHOD GetFileType() CLASS ZDBFFILE 
+Return "DBF"
 
 // ----------------------------------------------------------
 // Construtor do objeto DBF 
@@ -451,11 +464,13 @@ Return ::nMemoType
 // ----------------------------------------------------------
 // Retorna a descrição do tipo de arquivo DBF 
 
-METHOD GetDBTypeStr() CLASS ZDBFFILE 
-If empty(::cDBFType)
-	Return ""
+METHOD GetDBTypeStr() CLASS ZDBFFILE
+Local cRet := '(Unknow DBF Type)'
+Local nPos := ascan(_aDbTypes,{|x| x[1] == ::cDBFType })
+If nPos > 0
+	cRet := _aDbTypes[nPos][2]
 Endif
-Return GetDBTypeStr(::cDBFType)
+Return cREt
 
 // ----------------------------------------------------------
 // Retorna a data do ultimo update feito no arquivo 
@@ -485,10 +500,10 @@ FRead(::nHData,@cBuffer,32)
 // ----------------------------------------
 // Database File Type
 
-cTemp := GetOffset(cBuffer,0,1)       
+cTemp := DBF_OFFSET(cBuffer,0,1)       
 nTemp := ASC(cTemp)
 
-::cDBFType := Byte2Hex(nTemp)
+::cDBFType := '0x'+padl( upper(DEC2HEX(nTemp)) , 2 , '0')
                                  
 If ::cDBFType == '0x83'   
 	// FoxBASE+/dBASE III PLUS, with memo
@@ -502,15 +517,15 @@ ElseIf ::cDBFType == '0xF5'
 	::nMemoType := 2
 Endif
 
-If !DBSuported(::cDBFType)
-	::_SetError(-5,"Format ("+::cDBFType+") not supported")
+If Ascan(_aDbTypes,{|x| x[1] == ::cDBFType }) == 0 
+	::_SetError(-5,"DBF FORMAT ("+::cDBFType+") NOT RECOGNIZED")
 	Return .F. 
 Endif
 
 // ----------------------------------------
 // Last Update ( YMD => 3 Bytes, binary )
 
-cTemp := GetOffset(cBuffer,1,3) 
+cTemp := DBF_OFFSET(cBuffer,1,3) 
 
 nYear  := ASC( substr(cTemp,1,1))
 nMonth := ASC( substr(cTemp,2,1))
@@ -527,19 +542,19 @@ Endif
 // ----------------------------------------
 // 4 bytes (32 bits), Record Count (  LastRec ) 
 
-cTemp := GetOffset(cBuffer,4,4) 
+cTemp := DBF_OFFSET(cBuffer,4,4) 
 ::nLastRec := Bin2L(cTemp)
 
 // ----------------------------------------
 // First Data Record Position  ( Offset ) 
 
-cTemp := GetOffset(cBuffer,8,2) 
+cTemp := DBF_OFFSET(cBuffer,8,2) 
 ::nDataPos := Bin2I(cTemp)
 
 // ----------------------------------------
 // Length of one data record, including delete flag
 
-cTemp := GetOffset(cBuffer,10,2) 
+cTemp := DBF_OFFSET(cBuffer,10,2) 
 ::nRecLength := Bin2I(cTemp)
 
 // Limpeza de variáveis 
@@ -587,14 +602,14 @@ While .T.
 		EXIT
 	Endif
 	
-	cFldName := GetOffset(cFldBuff,0,11)
+	cFldName := DBF_OFFSET(cFldBuff,0,11)
 	cFldName := left( cFldName,AT(chr(0),cFldName )-1 )
 	cFldName := padr(cFldName,10)
 	
-	cFldType := GetOffset(cFldBuff,11,1)
+	cFldType := DBF_OFFSET(cFldBuff,11,1)
 
-	nFldLen  := ASC(GetOffset(cFldBuff,16,1))
-	nFldDec  := ASC(GetOffset(cFldBuff,17,1))
+	nFldLen  := ASC(DBF_OFFSET(cFldBuff,16,1))
+	nFldDec  := ASC(DBF_OFFSET(cFldBuff,17,1))
 	
 	aadd(::aStruct , { cFldName , cFldType , nFldLen , nFldDec } )
 
@@ -1007,11 +1022,6 @@ Endif
 
 Return cMemo
 
-
-// =================================================
-// Funcoes Auxiliares internas da classe 
-// =================================================
-
 // Array com os tipos de DBF reconhecidos 
 // O 3o elemento quando .T. indoca se o formato é suportado 
 
@@ -1034,41 +1044,4 @@ STATIC _aDbTypes := { { '0x02','FoxBASE'                                        
                       { '0xFB','FoxBASE'                                              , .F. } } 
 
 
-// ----------------------------------------
-// A partir do bnuffer informado, retorna o conteúdo 
-// a partir do Offset e tamanho informados 
-STATIC Function GetOffset(cBuffer,nOffset,nSize)
-Return substr(cBuffer,nOffset+1,nSize)
-
-
-// ----------------------------------------
-// Converte um valor decimal para Hexadecimal maiusculo, 
-// prefixando o retorno com "0x"
-STATIC Function Byte2Hex(nByte)
-Return '0x'+padl( upper(DEC2HEX(nByte)) , 2 , '0')
-
-               
-// ----------------------------------------
-// Recebe identificaedor Hexadecimal do tipo do DBF
-// Retorna a string a partir do tipo 
-
-STATIC Function GetDBTypeStr(cTypeHex)
-Local cRet := '(Unknow file -- NOT a DBF File)'
-Local nPos := ascan(_aDbTypes,{|x| x[1] == cTypeHex })
-If nPos > 0 
-	cRet := _aDbTypes[nPos][2]
-Endif
-Return cREt
-                
-// ----------------------------------------
-// Recebe identificaedor Hexadecimal do tipo do DBF
-// Retorna .T. caso o suporte esteja implementado 
-
-STATIC Function DBSuported(cTypeHex)
-Local lSup := .F.
-Local nPos := ascan(_aDbTypes,{|x| x[1] == cTypeHex })
-If nPos > 0 
-	lSup := _aDbTypes[nPos][3]
-Endif
-Return lSup
-
+              

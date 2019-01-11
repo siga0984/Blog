@@ -43,6 +43,8 @@ CLASS ZMEMFILE FROM ZISAMFILE
   METHOD EXISTS()           // Verifica se a tabela existe 
   METHOD CREATE()           // Cria a tabela no disco 
 
+  METHOD GetFileType()      // Tipo do arquivo ("MEMORY")
+
   METHOD FieldGet( nPos )   // Recupera o conteudo da coluna informada do registro atual 
   METHOD FieldPut( nPos )   // Faz update em uma coluna do registro atual 
   METHOD FileName()         // Retorna nome do arquivo aberto 
@@ -66,6 +68,12 @@ CLASS ZMEMFILE FROM ZISAMFILE
   METHOD _ClearRecord()		// Limpa o registro da memoria (EOF por exemplo) 
 
 ENDCLASS
+
+// ----------------------------------------------------------
+// Retorna o tipo do arquivo 
+
+METHOD GetFileType() CLASS ZMEMFILE 
+Return "MEMORY"
 
 // ----------------------------------------------------------
 // Construtor do objeto DBF 
