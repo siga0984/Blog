@@ -75,64 +75,6 @@ CLASS ZISAMFILE FROM LONGNAMECLASS
 ENDCLASS
 
 
-// ----------------------------------------------------------
-// Cria um arquivo de dados na instancia atual usando a estrutura 
-// do objeto de arquivo de dados informado como parametro 
-
-METHOD CreateFrom( oDBF ) CLASS ZISAMFILE
-Local aStruct := oDBF:GetStruct()
-Local lOk := ::Create(aStruct)
-Return lOk
-
-
-// ----------------------------------------------------------
-// Apena os dados da tabela informada na atual 
-// Origem = oDbf
-// Destino = self
-
-METHOD AppendFrom( oDBF , lAll, lRest , cFor , cWhile ) CLASS ZISAMFILE
-Local aFromTo := {}
-Local aFrom := oDBF:GetStruct()
-Local nI, nPos, cField
-
-DEFAULT lAll  := .T. 
-DEFAULT lRest := .F. 
-DEFAULT cFor := ''
-DEFAULT cWhile := ''
-
-// Determina match de campos da origem no destino 
-For nI := 1 to len(aFrom)
-	cField :=  aFrom[nI][1]
-	nPos := ::FieldPos(cField)
-	If nPosTo > 0 
-		aadd( aFromTo , { nI , nPos })
-	Endif
-Next
-
-If lAll
-	oDBF::GoTop()
-Endif
-
-While !oDBF:EOF()
-
-	// Insere o registro na tabela atual
-	::Insert()
-
-	// Preenche os campos com os valores da origem 	
-	For nI := 1 to len(aFromTo)
-		::FieldPut(  aFromTo[nI][2] , oDBF:FieldGet(aFromTo[nI][1])  )
-	Next
-
-	// Atualiza os valores 
-	::Update()
-
-	// Vai para o procimo registro	
-	oDBF:Skip()
-	
-Enddo
- 
-Return
-
 // ----------------------------------------
 // Retorna .T. caso a ultima movimentação de registro 
 // tentou ir antes do primeiro registro 
@@ -463,6 +405,66 @@ Next
 
 Return
 
+// ----------------------------------------------------------
+// Cria um arquivo de dados na instancia atual usando a estrutura 
+// do objeto de arquivo de dados informado como parametro 
+
+METHOD CreateFrom( _oDBF ) CLASS ZISAMFILE
+Local aStruct := _oDBF:GetStruct()
+Local lOk := ::Create(aStruct)
+Return lOk
+
+
+// ----------------------------------------------------------
+// Apena os dados da tabela informada na atual 
+// Origem = _oDBF
+// Destino = self
+
+METHOD AppendFrom( _oDBF , lAll, lRest , cFor , cWhile ) CLASS ZISAMFILE
+Local aFromTo := {}
+Local aFrom := _oDBF:GetStruct()
+Local nI, nPos, cField
+
+DEFAULT lAll  := .T. 
+DEFAULT lRest := .F.
+DEFAULT cFor := ''
+DEFAULT cWhile := ''
+
+// Determina match de campos da origem no destino 
+For nI := 1 to len(aFrom)
+	cField :=  aFrom[nI][1]
+	nPos := ::FieldPos(cField)
+	If nPosTo > 0 
+		aadd( aFromTo , { nI , nPos })
+	Endif
+Next
+
+If lAll
+	// Se é paga importar tudo, volta para 
+	// o inicio da tabela
+	_oDBF::GoTop()
+Endif
+
+While !_oDBF:EOF()
+
+	// Insere um novo registro na tabela atual
+	::Insert()
+
+	// Preenche os campos com os valores da origem 	
+	For nI := 1 to len(aFromTo)
+		::FieldPut(  aFromTo[nI][2] , _oDBF:FieldGet(aFromTo[nI][1])  )
+	Next
+
+	// Atualiza os valores 
+	::Update()
+
+	// Vai para o procimo registro	
+	_oDBF:Skip()
+	
+Enddo
+ 
+Return
+
 // ----------------------------------------
 // *** METODO DE USO INTERNO ***
 // Verifica se o registro atual está contemplado pelo filtro 
@@ -692,7 +694,7 @@ Local cBlockStr
 Local nI, nPos
 
 // Cria lista de campos
-aEval( ::oDBF:aStruct , {|x| aadd(aCampos , x[1]) } )
+aEval( ::aStruct , {|x| aadd(aCampos , x[1]) } )
 
 // Ordena pelos maiores campos primeiro
 aSort( aCampos ,,, {|x,y| alltrim(len(x)) > alltrim(len(y)) } )
@@ -705,7 +707,7 @@ cBlockStr := cFieldExpr
 
 For nI := 1 to len(aCampos)
 	cCampo := alltrim(aCampos[nI])
-	nPos   := ::oDBF:Fieldpos(cCampo)
+	nPos   := ::Fieldpos(cCampo)
 	cBlockStr  := StrTran( cBlockStr , cCampo,"o:FieldGet(" +cValToChar(nPos)+ ")")
 Next
 
