@@ -100,6 +100,8 @@ Endif
 	
 Return
 
+// Faz parser de um XML lido do disco a partir do RootPAth
+
 STATIC Function DoParserFile(oDlg,oListResult,oXml,cXmlFile)
 Local lOk
 Local nTimer 
@@ -133,22 +135,24 @@ Endif
 	
 Return
                                  
+// Monta os dados para um ListBox com os resultados obtidos 
 
-STATIC Function BuildResult(oXml,oListResult)
+STATIC Function BuildResult(oXml,oListResult,aResult,nStack)
 Local cRow          
-Local aResult := {}
 
+DEFAULT aResult := {}
+DEFAULT nStack := 1
+ 
 While .T.
 
+	// Se o nó atual tem um dado, armazena
 	If !XMLempty(oXML:cText)
-		//conout("Name ... "+oXML:cName)
-		//conout("Path ... "+oXML:cPath)
-		//conout("Text ... "+oXML:cText)
 		cRow := 'Path ['+oXML:cPath+'] Value ['+oXML:cText+']'
 		aadd(aResult,cRow)
 	Endif
 	
 	IF oXml:DOMHASATT()
+		// Se o nó atual tem atrubitos, lê todos
 		aAtt := oXml:DOMGETATTARRAY()
 		For nI := 1 to len(aAtt)
 			cRow := 'Path ['+oXML:cPath+'] Att ['+aAtt[nI][1]+'] Value ['+aAtt[nI][2]+']'
@@ -156,26 +160,38 @@ While .T.
 		Next
 	Endif
 	
-	If oXml:DOMHasNextNode()
-		oxml:DOMNextNode()
-		LOOP
-	ElseIf oXml:DOMHasChildNode()
+	If oXml:DOMHasChildNode()
+		// Se o nó atual tem um filho, entra nele para avaliar o conteudo
 		oxml:DOMChildNode()
-		LOOP
+		BuildResult(oXml,oListResult,aResult,nStack+1)
+		oxml:DOMParentNode()
 	Endif
 	
+	IF oXml:DOMHasNextNode()
+		// Se existe um próximo nó neste nivel, 
+		// vai pra ele e continua analizando 
+		oxml:DOMNextNode()
+		LOOP
+	Endif
+
+	// Este nó já foi analizado inteiro, sai do loop 
 	EXIT
 	
 Enddo
 
-If len(aResult) > 0 
-	oListResult:SetArray(aResult)
-Else
-	oListResult:SetArray({' *** NO RESULT *** '})
+If nStack == 1
+	// Seta o array de resultado para o ListBox
+	If len(aResult) > 0
+		oListResult:SetArray(aResult)
+	Else
+		oListResult:SetArray({' *** NO RESULT *** '})
+	Endif
 Endif
 
 Return
 
+// Remove caracteres irrelevantes do valor de um node 
+// para ver se ele é realmente vazio
 
 Static Function XMLempty(cNodeValue)
 
@@ -185,6 +201,4 @@ cNodeValue := strtran(cNodeValue,chr(9),'')
 cNodeValue := strtran(cNodeValue,' ','')
 
 Return empty(cNodeValue)
-
-
 
