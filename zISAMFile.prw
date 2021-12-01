@@ -60,7 +60,6 @@ CLASS ZISAMFILE FROM LONGNAMECLASS
   METHOD SetVerbose()       // Liga ou desliga o modo "verbose" da classe
   METHOD IsVerbose()        // Consulta ao modo verbose
 
-
   // ========================= Metodos de uso interno da classe
 
   METHOD _ResetError()		// Limpa a ultima ocorrencia de erro 

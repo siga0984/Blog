@@ -5,14 +5,14 @@
 Classe      ZMEMINDEX
 Autor       Julio Wittwer
 Data        05/01/2019
-Descrição   A partir de um objeto ZDBFFILE, permite 
+Descrição   A partir de um objeto ZISAMFILE, permite 
             a criação de um índice em memória 
 
 ================================================== */
 
 CLASS ZMEMINDEX FROM LONGNAMECLASS
 
-   DATA oDBF			// Objeto ZDBFFILE relacionado ao índice 
+   DATA oDBF			// Objeto ZISAMFILE relacionado ao índice 
    DATA cIndexExpr      // Expressão AdvPL original do índice
    DATA bIndexBlock     // CodeBlock para montar uma linha de dados do índice
    DATA aIndexData      // Array com os dados do índice ordenado pela chave 
@@ -37,7 +37,7 @@ CLASS ZMEMINDEX FROM LONGNAMECLASS
    METHOD RecordSeek()    // REaliza uma busca no indice pelo RECNO 
    METHOD UpdateKey()     // Atualiza uma chave de indice ( em implementação ) 
    
-   METHOD _CheckSync()    // Verifica a necessidade de sincronizar o indice 
+   METHOD CheckSync()    // Verifica a necessidade de sincronizar o indice 
    METHOD SetResync()     // Seta flag de resincronismo pendente
    METHOD SetVerbose()    // Seta modo verbose com echo em console ( em implementação 
    
@@ -59,7 +59,7 @@ METHOD NEW(oDBF) CLASS ZMEMINDEX
 Return self
 
 // ----------------------------------------
-// Chamado pela ZDBFFILE para indicar que o registro ou chave atuais 
+// Chamado pela ZISAMFILE para indicar que o registro ou chave atuais 
 // precisam ser resincronizados devido a mudança de indice ativo
 // ou reposicionamento de registro direto por DBGoto()
 METHOD SetResync() CLASS ZMEMINDEX
@@ -78,7 +78,7 @@ Return
 // Verifica se existe sincronismo pendente antes de fazer uma movimentacao 
 // Caso tenha, efetua o sincronismo da posicao do indice com a posicao do RECNO 
 
-METHOD _CheckSync() CLASS ZMEMINDEX
+METHOD CheckSync() CLASS ZMEMINDEX
 Local nRecno
 
 If ::lSetResync
@@ -184,7 +184,7 @@ Return 0
 
 METHOD GetPrevRec() CLASS ZMEMINDEX
 If Len(::aIndexData) > 0 .and. ::nCurrentRow > 1
-	::_CheckSync()
+	::CheckSync()
 	::nCurrentRow--
 	Return ::aIndexData[::nCurrentRow][2]
 Endif
@@ -197,7 +197,7 @@ Return 0
 
 METHOD GetNextRec() CLASS ZMEMINDEX
 If ::nCurrentRow < Len(::aIndexData)
-	::_CheckSync()
+	::CheckSync()
 	::nCurrentRow++
 	Return ::aIndexData[::nCurrentRow][2]
 Endif
