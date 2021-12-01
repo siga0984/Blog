@@ -388,6 +388,7 @@ Local cFile
 Local aTmp, nI
 Local nOp := oLbxRight:GetPos()
 Local cCurrDir
+Local nStat
 
 If nOp > 0
 	
@@ -646,6 +647,7 @@ Local cTarget
 Local cCurrDir
 Local lExist
 Local lRun
+local nStat
 
 // Pega Handle do componente de interface que estava com o foco
 // quando a tecla de atalho foi pressionada
