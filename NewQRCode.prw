@@ -1,5 +1,4 @@
 #include 'protheus.ch'
-#include 'zlib.ch'
 
 #define MODULE_PIXEL_SIZE     12   //  Tamanho em PIXELs do Modulo
 
@@ -73,6 +72,7 @@ Return
 // Geração do QR Code na interface
 
 STATIC Function NewQRCode(oQR,cQRData,cErrC,nMode,cMask,oBMPQRCode)
+Local nL , nC 
 
 IF oQR != NIL
 	FreeObj(oQR)

@@ -139,6 +139,7 @@ Return
 
 STATIC Function BuildResult(oXml,oListResult,aResult,nStack)
 Local cRow          
+Local nI 
 
 DEFAULT aResult := {}
 DEFAULT nStack := 1
